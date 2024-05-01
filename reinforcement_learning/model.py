@@ -54,11 +54,13 @@ class GNN(torch.nn.Module):
         p_hat.masked_fill_(mask, float('-inf')) # Mask out chosen indices
         logits = F.log_softmax(p_hat, dim=-1)
 
+        # Sample the next wavelet index
         m = Categorical(logits=logits)
         wavelet_index = m.sample()
         log_prob = m.log_prob(wavelet_index)
         mask.scatter_(dim=-1, index=wavelet_index.unsqueeze(-1), src=torch.ones_like(mask, dtype=torch.bool, device=A.device))
 
+        # Find other k - 1 indices 
         rest_indices = self.find_most_similar_indices(h_concatenated, wavelet_index, self.k - 1)
 
         return wavelet_index, rest_indices, log_prob
