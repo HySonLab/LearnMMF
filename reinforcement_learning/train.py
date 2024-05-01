@@ -1,11 +1,11 @@
-import pytorch_lightning as pl
-from model import GNN
-import torch.nn as nn
 import torch
-from data import MMFTrainSet
-from torch.utils.data import DataLoader
-from utils import get_cost
 import numpy as np
+from model import GNN
+from utils import get_cost
+from data import MMFTrainSet
+import pytorch_lightning as pl
+from torch.utils.data import DataLoader
+
 
 class MMFAgent(pl.LightningModule):
     def __init__(self, input_dim, hidden_dim, n_layers, L, k,

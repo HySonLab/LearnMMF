@@ -1,6 +1,6 @@
+import torch
 from torch.utils.data import IterableDataset, Dataset
 from utils import generate_random_weighted_graph_laplacian
-import torch
 
 
 class MMFTrainsSet(IterableDataset):
