@@ -38,12 +38,10 @@ class MMFAgent(pl.LightningModule):
 
         with torch.no_grad():
             cost = get_cost(batch['A'], self.L, self.k, wavelet_indices, rest_indices)
-            baseline_cost = 0
-            advatange = cost - baseline_cost
 
-        loss = advatange * log_prob.squeeze(-1) # TODO: Check dimension here
+        loss = cost * log_prob
         loss = loss.mean()
-        logs = {'adv': advatange.mean().item(), 'loss': loss.item()}
+        logs = {'adv': cost.mean().item(), 'loss': loss.item()}
         self.training_step_loss.append(torch.mean(cost).item())
 
         return {'loss': loss, 'log': logs}

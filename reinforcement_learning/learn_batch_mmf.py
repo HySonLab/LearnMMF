@@ -4,23 +4,20 @@ import torch.nn as nn
 from torch.optim import Adagrad
 
 
-class Learn_Batch_MMF(nn.Module):
-    def __init__(self, A, L, K, drop, dim, wavelet_indices, rest_indices, device = 'cpu'):
+class LearnBatchMMF(nn.Module):
+    def __init__(self, A, L, K, wavelet_indices, rest_indices, device = 'cpu'):
         # A (batch_size, N, N)
         # wavelet_indices (batch_size, L)
         # rest_indices (batch_size, L, K - 1)
-        super(Learn_Batch_MMF, self).__init__()
+        super(LearnBatchMMF, self).__init__()
         
         self.A = A
         self.batch_size, self.N, _ = A.size()
         self.L = L
         self.K = K
-        self.dim = dim
-        assert self.dim == self.N - self.L
         self.device = device
         self.wavelet_indices = wavelet_indices
         self.rest_indices = rest_indices
-        self.drop = drop
         self.selected_indices = []
 
         # Initialization of the Jacobi rotation matrix
@@ -31,7 +28,7 @@ class Learn_Batch_MMF(nn.Module):
 
         for l in range(self.L):
             # Set the indices for this rotation
-            indices = all_levels_indices[:, l, :] # (batch_size, k)
+            indices, _ = torch.sort(all_levels_indices[:, l, :]) # (batch_size, k)
             index = torch.zeros((self.batch_size, self.N), device=device)
             index.scatter_(dim=-1, index=indices, src=torch.ones((self.batch_size, self.N), device=device))
             self.selected_indices.append(index)
@@ -45,7 +42,7 @@ class Learn_Batch_MMF(nn.Module):
             _, vectors = torch.linalg.eig(A_part)
 
             # Rotation matrix
-            O = torch.nn.Parameter(vectors.transpose(1, 2).data, requires_grad=True)
+            O = torch.nn.Parameter(vectors.real.transpose(1, 2).data, requires_grad=True)
             self.all_O.append(O)
 
             # Full Jacobian rotation matrix
@@ -62,6 +59,7 @@ class Learn_Batch_MMF(nn.Module):
         left_index = torch.bmm(active_index.unsqueeze(2), active_index.unsqueeze(1)) # (batch_size, N, N)
         left_index[:, torch.arange(self.N), torch.arange(self.N)] = 1
         D = A * left_index
+
 
         # Save the remaining active indices
         self.final_active_index = active_index
@@ -107,8 +105,8 @@ class Learn_Batch_MMF(nn.Module):
         return A_rec, right, D
     
 
-def train_learn_batch_mmf(A, L, K, drop, dim, wavelet_indices, rest_indices, epochs = 10000, learning_rate = 1e-4, early_stop = True, opt = 'original'):
-    model = Learn_Batch_MMF(A, L, K, drop, dim, wavelet_indices, rest_indices)
+def train_learn_batch_mmf(A, L, K, wavelet_indices, rest_indices, epochs = 10000, learning_rate = 1e-4, early_stop = True):
+    model = LearnBatchMMF(A, L, K, wavelet_indices, rest_indices)
     
     optimizer = Adagrad(model.parameters(), lr = learning_rate)
 
@@ -120,10 +118,10 @@ def train_learn_batch_mmf(A, L, K, drop, dim, wavelet_indices, rest_indices, epo
 
         A_rec, right, D = model()
 
-        loss = torch.norm(A - A_rec)
+        loss = torch.mean(torch.linalg.matrix_norm(A - A_rec))
         loss.backward()
 
-        if epoch % 1000 == 0:
+        if epoch % 100 == 0 and epoch > 0:
             print('---- Epoch', epoch, '----')
             print('Loss =', loss.item())
             print('Time =', time.time() - t)
@@ -140,8 +138,9 @@ def train_learn_batch_mmf(A, L, K, drop, dim, wavelet_indices, rest_indices, epo
     # Return the result
     A_rec, right, D = model()
 
-    loss = torch.norm(A - A_rec, p = 'fro')
+    per_matrix_loss = torch.linalg.matrix_norm(A - A_rec)
+    loss = torch.mean(per_matrix_loss).item()
     print('---- Final loss ----')
-    print('Loss =', loss.item())
+    print('Loss =', loss)
 
-    return A_rec, right, D
+    return A_rec, right, D, per_matrix_loss
