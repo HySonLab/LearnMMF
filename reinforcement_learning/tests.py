@@ -1,8 +1,10 @@
 import torch
 import random
 import unittest
-from learn_batch_mmf import train_learn_batch_mmf
+from model import GNN
+from utils import get_cost
 from learn_single_mmf import train_single_mmf
+from learn_batch_mmf import train_learn_batch_mmf
 from utils import generate_random_weighted_graph_laplacian
 
 
@@ -65,7 +67,41 @@ class TestReinforcementLearning(unittest.TestCase):
         
         print(f'The per matrix loss of single MMF is {single_loss}')
         print(f'The per matrix loss of batch MMF is {batch_loss.tolist()}')
-        
+
+
+class TestGNN(unittest.TestCase):
+    def setUp(self):
+        self.input_dim = 2
+        self.hidden_dim = 16
+        self.n_layers = 3
+        self.L = 5
+        self.k = 4
+        self.device = torch.device('cpu')  # or specify 'cuda' if you have GPU support
+
+    def test_gnn_forward(self):
+        model = GNN(self.input_dim, self.hidden_dim, self.n_layers, self.L, self.k).to(self.device)
+
+        # Dummy input data
+        batch_size = 2
+        matrix_size = 10
+        edge_probability = 0.7
+        weight_range = (1, 10)
+        output = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, weight_range, self.device)
+        x = output['x']
+        A = output['A']
+
+        # Forward pass
+        agg_wavelet_indices, agg_rest_indices, sum_log_prob = model(x, A)
+
+        # Assertions
+        self.assertEqual(agg_wavelet_indices.shape, (batch_size, self.L))  # Check shape of agg_wavelet_indices
+        self.assertEqual(agg_rest_indices.shape, (batch_size, self.L, self.k - 1))  # Check shape of agg_rest_indices
+        print(f'Wavelets are {agg_wavelet_indices.size()} \n {agg_wavelet_indices}')
+        print(f'Rests are {agg_rest_indices.size()} \n {agg_rest_indices}')
+        print(f'Log probability are {sum_log_prob.size()} \n {sum_log_prob}')
+
+        cost = get_cost(A, self.L, self.k, agg_wavelet_indices, agg_rest_indices)
+        print(f'The cost is {cost}')
 
 if __name__ == '__main__':
     unittest.main()

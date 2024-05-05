@@ -5,7 +5,7 @@ from torch.optim import Adagrad
 
 
 class LearnBatchMMF(nn.Module):
-    def __init__(self, A, L, K, wavelet_indices, rest_indices, device = 'cpu'):
+    def __init__(self, A, L, K, wavelet_indices, rest_indices, device='cpu'):
         # A (batch_size, N, N)
         # wavelet_indices (batch_size, L)
         # rest_indices (batch_size, L, K - 1)
@@ -67,7 +67,7 @@ class LearnBatchMMF(nn.Module):
         # Reconstruction
         A_rec = torch.bmm(torch.bmm(torch.transpose(right, 1, 2), D), right)
 
-        print('Initialization loss:', torch.mean(torch.linalg.matrix_norm(self.A.data - A_rec)).item())
+        print('Mean initialization loss:', torch.mean(torch.linalg.matrix_norm(self.A.data - A_rec)).item())
 
     def forward(self):
         # The current matrix
@@ -105,7 +105,7 @@ class LearnBatchMMF(nn.Module):
         return A_rec, right, D
     
 
-def train_learn_batch_mmf(A, L, K, wavelet_indices, rest_indices, epochs = 10000, learning_rate = 1e-4, early_stop = True):
+def train_learn_batch_mmf(A, L, K, wavelet_indices, rest_indices, epochs=1000, learning_rate=1e-4, early_stop=True, logging=True):
     model = LearnBatchMMF(A, L, K, wavelet_indices, rest_indices)
     
     optimizer = Adagrad(model.parameters(), lr = learning_rate)
@@ -121,7 +121,7 @@ def train_learn_batch_mmf(A, L, K, wavelet_indices, rest_indices, epochs = 10000
         loss = torch.mean(torch.linalg.matrix_norm(A - A_rec))
         loss.backward()
 
-        if epoch % 100 == 0 and epoch > 0:
+        if epoch % 100 == 0 and epoch > 0 and logging:
             print('---- Epoch', epoch, '----')
             print('Loss =', loss.item())
             print('Time =', time.time() - t)
@@ -140,7 +140,8 @@ def train_learn_batch_mmf(A, L, K, wavelet_indices, rest_indices, epochs = 10000
 
     per_matrix_loss = torch.linalg.matrix_norm(A - A_rec)
     loss = torch.mean(per_matrix_loss).item()
-    print('---- Final loss ----')
-    print('Loss =', loss)
+    if logging:
+        print('---- Final loss ----')
+        print('Loss =', loss)
 
     return A_rec, right, D, per_matrix_loss

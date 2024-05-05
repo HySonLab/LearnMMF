@@ -50,7 +50,8 @@ class GNN(torch.nn.Module):
         h_concatenated = torch.cat(h_all_layers, dim=-1)
 
         # Calculate the logits
-        p_hat = torch.sum(h_concatenated, dim=-1)
+        p_hat = torch.mean(h_concatenated, dim=-1) # sum is too large?
+        p_hat = torch.tanh(p_hat) * 10
         p_hat.masked_fill_(mask, float('-inf')) # Mask out chosen indices
         logits = F.log_softmax(p_hat, dim=-1)
 

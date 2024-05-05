@@ -4,7 +4,8 @@ from learn_batch_mmf import train_learn_batch_mmf
 
 
 def get_cost(A, L, k, wavelet_indices, rest_indices):
-    return train_learn_batch_mmf(A, L, k, wavelet_indices, rest_indices)[3]
+    return train_learn_batch_mmf(A, L, k, wavelet_indices, rest_indices, logging=False)[3]
+
 
 def generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, weight_range=(1, 10), device='cpu'):
     # Generate adjacency matrices for the entire batch
