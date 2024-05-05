@@ -7,7 +7,7 @@ def get_cost(A, L, k, wavelet_indices, rest_indices):
     return train_learn_batch_mmf(A, L, k, wavelet_indices, rest_indices, logging=False)[3]
 
 
-def generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, weight_range=(1, 10), device='cpu'):
+def generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, device='cpu'):
     # Generate adjacency matrices for the entire batch
     adjacency_matrices = torch.rand(batch_size, matrix_size, matrix_size, device=device) < sqrt(edge_probability)
     adjacency_matrices = torch.minimum(adjacency_matrices, adjacency_matrices.transpose(1, 2))
@@ -18,8 +18,7 @@ def generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_proba
     adjacency_matrices = adjacency_matrices * mask
     
     # Generate random weights for the edges
-    min_weight, max_weight = weight_range
-    weights = torch.randint(min_weight, max_weight + 1, size=(batch_size, matrix_size, matrix_size), dtype=torch.float32, device=device)
+    weights = torch.rand(size=(batch_size, matrix_size, matrix_size), dtype=torch.float32, device=device)
     
     # Apply weights to the adjacency matrices
     weighted_adjacency_matrices = adjacency_matrices * weights
@@ -33,7 +32,7 @@ def generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_proba
     laplacian_matrices = degree_matrices - weighted_adjacency_matrices
 
     # Calculate other node features
-    degree = torch.sum(adjacency_matrices, dim=-1)
+    degree = torch.mean(adjacency_matrices, dim=-1)
     weight_sum = torch.sum(weighted_adjacency_matrices, dim=-1)
     node_features = torch.stack([degree, weight_sum], dim=-1)
 

@@ -14,11 +14,10 @@ class TestReinforcementLearning(unittest.TestCase):
         batch_size = 2
         matrix_size = 5
         edge_probability = 0.7
-        weight_range = (1, 10)
         device = 'cpu'
 
         # Call the function
-        output = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, weight_range, device)
+        output = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, device)
 
         # Assertions
         self.assertIn('x', output)             # Check if 'x' key is present
@@ -28,16 +27,19 @@ class TestReinforcementLearning(unittest.TestCase):
         self.assertEqual(output['x'].shape, (batch_size, matrix_size, 2))  # Check shape of node features
         self.assertEqual(output['A'].shape, (batch_size, matrix_size, matrix_size))  # Check shape of Laplacian matrices
 
+        x, A = output['x'], output['A']
+        print(f'x = {x}')
+        print(f'A = {A}')
+
     def test_train_learn_batch_mmf(self):
         # Define dummy input parameters
         batch_size = 10
         matrix_size = 10
         edge_probability = 0.8
-        weight_range = (1, 10)
         device = 'cpu'
 
         # Call the function
-        A = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, weight_range, device)['A']
+        A = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, device)['A']
         L = 4
         K = 3
 
@@ -85,8 +87,7 @@ class TestGNN(unittest.TestCase):
         batch_size = 2
         matrix_size = 10
         edge_probability = 0.7
-        weight_range = (1, 10)
-        output = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, weight_range, self.device)
+        output = generate_random_weighted_graph_laplacian(batch_size, matrix_size, edge_probability, self.device)
         x = output['x']
         A = output['A']
 
