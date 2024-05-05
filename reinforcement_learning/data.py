@@ -3,7 +3,7 @@ from torch.utils.data import IterableDataset, Dataset
 from utils import generate_random_weighted_graph_laplacian
 
 
-class MMFTrainsSet(IterableDataset):
+class MMFTrainSet(IterableDataset):
     """
     Generate Laplacian instances and node features on the fly
     """

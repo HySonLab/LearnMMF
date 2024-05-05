@@ -138,7 +138,7 @@ def train_learn_batch_mmf(A, L, K, wavelet_indices, rest_indices, epochs=1000, l
     # Return the result
     A_rec, right, D = model()
 
-    per_matrix_loss = torch.linalg.matrix_norm(A - A_rec)
+    per_matrix_loss = torch.linalg.matrix_norm(A - A_rec).detach()
     loss = torch.mean(per_matrix_loss).item()
     if logging:
         print('---- Final loss ----')
