@@ -84,8 +84,6 @@ class LearnableSingleMMF(nn.Module):
         # Reconstruction
         A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1), D), right)
 
-        print('Initialization loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
-
     def forward(self):
         # The current matrix
         A = self.A
@@ -159,7 +157,5 @@ def train_single_mmf(A, L, K, wavelet_indices, rest_indices, epochs = 10000, lea
     A_rec, right, D = model()
 
     loss = torch.norm(A - A_rec, p = 'fro')
-    print('---- Final loss ----')
-    print('Loss =', loss.item())
 
-    return A_rec, right, D, loss
+    return A_rec, right, D, loss.item()
