@@ -11,7 +11,7 @@ def generate_single_random_weighted_graph_laplacian(matrix_size, edge_probabilit
     adjacency_matrix = adjacency_matrix * (~torch.eye(matrix_size, dtype=torch.bool, device=device))
     
     # Generate random weights for the edges
-    weights = torch.rand(size=(matrix_size, matrix_size), dtype=torch.float32, device=device)
+    weights = torch.rand(size=(matrix_size, matrix_size), dtype=torch.float32, device=device) * 100
     
     # Apply weights to the adjacency matrix
     weighted_adjacency_matrix = adjacency_matrix * weights

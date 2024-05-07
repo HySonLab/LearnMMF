@@ -64,6 +64,12 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
     # Initialization
     population = torch.stack([torch.randperm(n)[:L] for _ in range(population_size)], dim=0)
     nearest_indices = get_nearest_indices(matrix, torch.arange(n), K - 1)
+
+    min_cost_per_gen = []
+    mean_cost_per_gen = []
+    all_time_min_cost_per_gen = []
+    all_time_min_cost = float('inf')
+    all_time_best_solution = None
     
     for gen in range(generations):
         # Evaluation
@@ -72,6 +78,14 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
         best_solution = population[min_cost_idx]
 
         print(f'The best solution at generation {gen} is {torch.min(costs, dim=0)[0].item()}')
+        min_cost_per_gen.append(torch.min(costs, dim=0)[0].item())
+        mean_cost_per_gen.append(torch.mean(costs, dim=0).item())
+
+        if min_cost_per_gen[-1] < all_time_min_cost:
+            all_time_min_cost = min_cost_per_gen[-1]
+            all_time_best_solution = best_solution
+
+        all_time_min_cost_per_gen.append(all_time_min_cost)
         
         # Selection
         sorted_indices = torch.argsort(costs)
@@ -117,5 +131,9 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
     min_cost_idx = torch.argmin(final_costs)
     best_solution = population[min_cost_idx]
     min_cost = final_costs[min_cost_idx]
+    if min_cost < all_time_min_cost:
+        all_time_min_cost = min_cost
+        all_time_best_solution = best_solution
+    all_time_min_cost_per_gen.append(all_time_min_cost)
     
-    return best_solution, nearest_indices[best_solution, :], min_cost
+    return all_time_best_solution, nearest_indices[all_time_best_solution, :], all_time_min_cost, min_cost_per_gen, mean_cost_per_gen, all_time_min_cost_per_gen
