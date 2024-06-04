@@ -1,7 +1,7 @@
 ## Paper
-* Multiresolution Matrix Factorization and Wavelet Networks on Graphs, Truong Son Hy, Risi Kondor Proceedings of Topological, Algebraic, and Geometric Learning Workshops 2022, PMLR 196:172-182, 2022. https://proceedings.mlr.press/v196/hy22a.html
-* Learning Multiresolution Matrix Factorization and its Wavelet Networks on Graphs (longer version) https://arxiv.org/pdf/2111.01940.pdf
 * Learning to Solve Multiresolution Matrix Factorization by Manifold Optimization and Evolutionary Metaheuristics http://arxiv.org/abs/2406.00469
+* Multiresolution Matrix Factorization and Wavelet Networks on Graphs, Truong Son Hy, Risi Kondor Proceedings of Topological, Algebraic, and Geometric Learning Workshops 2022, PMLR 196:172-182, 2022. https://proceedings.mlr.press/v196/hy22a.html
+* Learning Multiresolution Matrix Factorization and its Wavelet Networks on Graphs (longer version) https://arxiv.org/abs/2111.01940
 
 ## Authors
 Truong Son Hy and Risi Kondor
