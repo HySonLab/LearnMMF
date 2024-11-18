@@ -71,7 +71,7 @@ def low_rank_block(m, n, rank):
     return torch.matmul(U, V.T)
 
 # Recursive function to generate an HSS matrix
-def hss_def(n, depth, rank):
+def hss_def(n=64, depth=4, rank=5):
     if depth == 0:
         # Base case: Dense diagonal block
         return torch.rand(n, n)

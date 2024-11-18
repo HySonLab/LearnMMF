@@ -54,6 +54,8 @@ if dataset == 'kron':
     A = kron_def()
 if dataset == 'cycle':
     A = cycle_def()
+if dataset == 'hss':
+    A = hss_def()
 if dataset == 'cora' or dataset == 'citeseer' or dataset == 'WebKB':
     adj, L_norm, features, labels, paper_ids, labels_list = citation_def(data_folder = data_folder, dataset = dataset)
     A = L_norm

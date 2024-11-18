@@ -16,6 +16,7 @@ from data_loader import *
 
 # Heuristics to find indices
 from heuristics import *
+from metaheuristics import get_cost, directed_evolution, evolutionary_algorithm
 
 # Learnable MMF
 from learnable_mmf_model import Learnable_MMF
@@ -68,6 +69,8 @@ if dataset == 'kron':
     A = kron_def()
 if dataset == 'cycle':
     A = cycle_def()
+if dataset == 'hss':
+    A = hss_def()
 if dataset == 'cora' or dataset == 'citeseer' or dataset == 'WebKB':
     adj, L_norm, features, labels, paper_ids, labels_list = citation_def(data_folder = data_folder, dataset = dataset)
     A = L_norm
@@ -92,6 +95,8 @@ dim = args.dim
 A_sparse = A.to_sparse()
 if args.heuristics == 'random':
     wavelet_indices, rest_indices = heuristics_random(A_sparse, L, K, drop, dim)
+elif args.heuristics == 'de':
+    wavelet_indices, rest_indices, de_cost, min_cost_per_gen, mean_cost_per_gen, all_time_min_cost_per_gen = directed_evolution(get_cost, A, L, K, population_size=10, generations=100, sample_kept_rate=0.3)
 else:
     if drop == 1:
         wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(A_sparse, L, K, drop, dim)
