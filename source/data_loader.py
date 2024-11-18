@@ -64,6 +64,36 @@ def cycle_def():
     print('Load the cycle graph')
     return A
 
+# Function to generate a low-rank matrix
+def low_rank_block(m, n, rank):
+    U = torch.rand(m, rank)
+    V = torch.rand(n, rank)
+    return torch.matmul(U, V.T)
+
+# Recursive function to generate an HSS matrix
+def hss_def(n, depth, rank):
+    if depth == 0:
+        # Base case: Dense diagonal block
+        return torch.rand(n, n)
+
+    # Partition the size of the matrix
+    half_n = n // 2
+
+    # Recursively generate diagonal blocks
+    A11 = hss_def(half_n, depth - 1, rank)
+    A22 = hss_def(half_n, depth - 1, rank)
+
+    # Generate low-rank off-diagonal blocks
+    A12 = low_rank_block(half_n, half_n, rank)
+    A21 = low_rank_block(half_n, half_n, rank)
+
+    # Assemble the full matrix
+    A_top = torch.cat((A11, A12), dim=1)
+    A_bottom = torch.cat((A21, A22), dim=1)
+    A = torch.cat((A_top, A_bottom), dim=0)
+
+    return A
+
 # Original citation graph
 def citation_def(data_folder, dataset):
     cites_fn = data_folder + '/' + dataset + '/' + dataset + '.cites'

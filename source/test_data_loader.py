@@ -10,6 +10,9 @@ print('Kronecker:', A.size())
 A = cycle_def()
 print('Cycle:', A.size())
 
+# HSS matrix
+A = hss_def(n=64, depth=3, rank=5)
+print('HSS matrix: ', A.size())
 
 # +-----------------+
 # | Citation graphs |
