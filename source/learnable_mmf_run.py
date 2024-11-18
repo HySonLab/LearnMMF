@@ -96,7 +96,9 @@ A_sparse = A.to_sparse()
 if args.heuristics == 'random':
     wavelet_indices, rest_indices = heuristics_random(A_sparse, L, K, drop, dim)
 elif args.heuristics == 'de':
-    wavelet_indices, rest_indices, de_cost, min_cost_per_gen, mean_cost_per_gen, all_time_min_cost_per_gen = directed_evolution(get_cost, A, L, K, population_size=10, generations=100, sample_kept_rate=0.3)
+    wavelet_indices, rest_indices, de_cost, min_cost_per_gen, mean_cost_per_gen, all_time_min_cost_per_gen = directed_evolution(get_cost, A, L, K, population_size=100, generations=100, sample_kept_rate=0.3)
+    wavelet_indices = wavelet_indices.unsqueeze(-1).tolist()
+    rest_indices = rest_indices.tolist()
 else:
     if drop == 1:
         wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(A_sparse, L, K, drop, dim)
