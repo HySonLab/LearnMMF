@@ -28,7 +28,7 @@ def _parse_args():
     parser.add_argument('--dataset', '-dataset', type = str, default = 'kron', help = 'Dataset')
     parser.add_argument('--L', '-L', type = int, default = 2, help = 'L')
     parser.add_argument('--dim', '-dim', type = int, default = 1, help = 'Dimension left at the end')
-    parser.add_argument('--num_times', '-num_times', type = int, default = 10, help = 'Number of times to run for statistics')
+    parser.add_argument('--num_times', '-num_times', type = int, default = 2, help = 'Number of times to run for statistics')
     parser.add_argument('--cayley_order', '-cayley_order', type = int, default = 2, help = 'Cayley order')
     parser.add_argument('--cayley_depth', '-cayley_depth', type = int, default = 5, help = 'Cayley depth')
     parser.add_argument('--seed', '-s', type = int, default = 123456789, help = 'Random seed')
@@ -69,6 +69,8 @@ if dataset == 'cycle':
     A = cycle_def()
 if dataset == 'hss':
     A = hss_def()
+if dataset == 'sparse':
+    A = random_sparse_def()
 if dataset == 'cora' or dataset == 'citeseer' or dataset == 'WebKB':
     adj, L_norm, features, labels, paper_ids, labels_list = citation_def(data_folder = data_folder, dataset = dataset)
     A = L_norm
@@ -82,6 +84,7 @@ if dataset == 'cayley':
     A, cayley_node_x, cayley_node_y, edges = cayley_def(cayley_order = args.cayley_order, cayley_depth = args.cayley_depth)
 
 assert A is not None
+print('The size of the matrix is ', A.size())
 N = A.size(0)
 L = args.L
 dim = args.dim
@@ -91,7 +94,7 @@ K = 2
 drop = 1
 
 # Execute the baseline MMF
-model = Baseline_MMF(N, L, dim)
+model = Baseline_MMF(N, L, dim, device)
 
 all_losses = []
 for i in range(args.num_times):

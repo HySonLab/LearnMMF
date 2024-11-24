@@ -2,6 +2,7 @@ import torch
 import math
 import random
 import numpy as np
+from tqdm import tqdm
 from learnable_mmf_model import learnable_mmf_train
 
 
@@ -180,7 +181,7 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
     all_time_min_cost = float('inf')
     all_time_best_solution = None
     
-    for gen in range(generations):
+    for gen in tqdm(range(generations), desc="Evolving the population for DE"):
         # Evaluation
         costs = torch.tensor([cost_function(matrix, indices, nearest_indices[indices, :], L, K) for indices in population], device=device)
         min_cost_idx = torch.argmin(costs)

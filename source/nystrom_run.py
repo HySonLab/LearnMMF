@@ -56,6 +56,8 @@ if dataset == 'cycle':
     A = cycle_def()
 if dataset == 'hss':
     A = hss_def()
+if dataset == 'sparse':
+    A = random_sparse_def()
 if dataset == 'cora' or dataset == 'citeseer' or dataset == 'WebKB':
     adj, L_norm, features, labels, paper_ids, labels_list = citation_def(data_folder = data_folder, dataset = dataset)
     A = L_norm
@@ -69,6 +71,8 @@ if dataset == 'cayley':
     A, cayley_node_x, cayley_node_y, edges = cayley_def(cayley_order = args.cayley_order, cayley_depth = args.cayley_depth)
 
 assert A is not None
+
+print('The size of the matrix is: ', A.size())
 
 # Nystrom method
 A_rec, C, W_inverse = nystrom_model(A, dim = args.dim)

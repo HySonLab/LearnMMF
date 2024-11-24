@@ -14,6 +14,9 @@ print('Cycle:', A.size())
 A = hss_def(n=64, depth=3, rank=5)
 print('HSS matrix: ', A.size())
 
+A = random_sparse_def()
+print('random sparse matrix: ', A.size())
+
 # +-----------------+
 # | Citation graphs |
 # +-----------------+

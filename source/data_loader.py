@@ -10,6 +10,7 @@ import argparse
 import os
 import time
 import matplotlib.pyplot as plt
+from scipy.sparse import coo_matrix
 
 from mnist_dataset import mnist_dataset
 
@@ -93,6 +94,22 @@ def hss_def(n=64, depth=4, rank=5):
     A = torch.cat((A_top, A_bottom), dim=0)
 
     return A
+
+# Random Sparse Graph
+def random_sparse_def(N=700, density=0.2):
+    """
+    Generate a random sparse graph adjacency matrix.
+    """
+    size = N * N
+    num_edges = int(density * size)
+    row = np.random.randint(0, N, num_edges)
+    col = np.random.randint(0, N, num_edges)
+    data = np.ones(num_edges)
+    sparse_adj = coo_matrix((data, (row, col)), shape=(N, N))
+    sparse_adj = sparse_adj + sparse_adj.T  # Make it symmetric
+    sparse_adj = torch.Tensor(sparse_adj.toarray())
+    print('Load the random sparse graph')
+    return sparse_adj
 
 # Original citation graph
 def citation_def(data_folder, dataset):
