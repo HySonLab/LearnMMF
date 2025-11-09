@@ -1,11 +1,6 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim import Adam, Adagrad
-from torch import optim
-from torch.utils.data import DataLoader
-
 import numpy as np
+import torch.nn as nn
 
 # Baseline MMF
 class Baseline_MMF(nn.Module):
@@ -129,4 +124,3 @@ class Baseline_MMF(nn.Module):
 
         # Result
         return A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets
-

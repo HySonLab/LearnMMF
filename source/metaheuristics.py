@@ -1,5 +1,5 @@
-import torch
 import math
+import torch
 import random
 import numpy as np
 from learnable_mmf_model import learnable_mmf_train
@@ -105,7 +105,6 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
         min_cost_idx = torch.argmin(costs)
         best_solution = population[min_cost_idx]
 
-        print(f'The best solution at generation {gen} is {torch.min(costs, dim=0)[0].item()}')
         min_cost_per_gen.append(torch.min(costs, dim=0)[0].item())
         mean_cost_per_gen.append(torch.mean(costs, dim=0).item())
 
@@ -186,7 +185,6 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
         min_cost_idx = torch.argmin(costs)
         best_solution = population[min_cost_idx]
 
-        print(f'The best solution at generation {gen} is {torch.min(costs, dim=0)[0].item()}')
         min_cost_per_gen.append(torch.min(costs, dim=0)[0].item())
         mean_cost_per_gen.append(torch.mean(costs, dim=0).item())
 
@@ -236,3 +234,13 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
         all_time_best_solution = best_solution
     
     return all_time_best_solution, nearest_indices[all_time_best_solution, :], all_time_min_cost, min_cost_per_gen, mean_cost_per_gen, all_time_min_cost_per_gen
+
+
+def generate_wavelet_basis(matrix, L, K, method):
+    wavelet_indices, rest_indices = None, None
+    if method == 'evolutionary_algorithm':
+        wavelet_indices, rest_indices, _, _, _, _ = evolutionary_algorithm(get_cost, matrix, L = L, K = K, population_size = 100, generations = 100, mutation_rate = 0.2)
+    elif method == 'directed_evolution':
+        wavelet_indices, rest_indices, _, _, _, _ = directed_evolution(get_cost, matrix, L = L, K = K, population_size = 10, generations = 100, sample_kept_rate = 0.5)
+    dim = matrix.size(0) - L
+    return learnable_mmf_train(matrix, L = L, K = K, drop = 1, dim = dim, wavelet_indices = wavelet_indices.unsqueeze(-1).tolist(), rest_indices = rest_indices.tolist(), epochs = 1024, learning_rate = 1e-3, early_stop = True)

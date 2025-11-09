@@ -70,11 +70,11 @@ class Learnable_MMF(nn.Module):
             outer = torch.outer(index, index)
 
             # Eigen-decomposition
-            A_part = torch.matmul(A[index == 1], torch.transpose(A[index == 1], 0, 1))
+            A_part = torch.matmul(A[index == 1], torch.transpose(A[index == 1], 0, 1).contiguous())
             values, vectors = torch.eig(torch.reshape(A_part, (self.K, self.K)), True)
 
             # Rotation matrix
-            O = torch.nn.Parameter(vectors.transpose(0, 1).data, requires_grad = True)
+            O = torch.nn.Parameter(vectors.transpose(0, 1).contiguous().data, requires_grad = True)
             self.all_O.append(O)
 
             # Full Jacobian rotation matrix
@@ -87,7 +87,7 @@ class Learnable_MMF(nn.Module):
                 right = torch.matmul(U, right)
 
             # New A
-            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1))
+            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous())
 
             # Drop the wavelet
             active_index[self.wavelet_indices[l]] = 0
@@ -100,9 +100,9 @@ class Learnable_MMF(nn.Module):
         D = A * left_index
 
         # Reconstruction
-        A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1), D), right)
+        A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
 
-        print('Initialization loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
+        # print('Initialization loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
 
     def forward(self):
         # The current matrix
@@ -129,7 +129,7 @@ class Learnable_MMF(nn.Module):
                 right = torch.matmul(U, right)
 
             # New A
-            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1))
+            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous())
 
         # Diagonal left
         active_index = self.final_active_index.to(device = self.device)
@@ -152,7 +152,7 @@ class Learnable_MMF(nn.Module):
         father_wavelets = torch.reshape(right[active_index == 1], (self.dim, self.N))
 
         # Reconstruction
-        A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1), D), right)
+        A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
 
         # Result
         return A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets
@@ -207,10 +207,10 @@ def learnable_mmf_train(A, L, K, drop, dim, wavelet_indices, rest_indices, epoch
         loss = torch.norm(A - A_rec, p = 'fro')
         loss.backward()
 
-        if epoch % 1000 == 0:
-            print('---- Epoch', epoch, '----')
-            print('Loss =', loss.item())
-            print('Time =', time.time() - t)
+        # if epoch % 1000 == 0:
+        #     print('---- Epoch', epoch, '----')
+        #     print('Loss =', loss.item())
+        #     print('Time =', time.time() - t)
 
         if loss.item() < best:
             best = loss.item()
@@ -226,7 +226,7 @@ def learnable_mmf_train(A, L, K, drop, dim, wavelet_indices, rest_indices, epoch
                 for l in range(L):
                     X = torch.Tensor(model.all_O[l].data)
                     G = torch.Tensor(model.all_O[l].grad.data)
-                    Z = torch.matmul(G, X.transpose(0, 1)) - torch.matmul(X, G.transpose(0, 1))
+                    Z = torch.matmul(G, X.transpose(0, 1).contiguous()) - torch.matmul(X, G.transpose(0, 1).contiguous())
                     tau = learning_rate
                     Y = torch.matmul(torch.matmul(torch.inverse(torch.eye(K) + tau / 2 * Z), torch.eye(K) - tau / 2 * Z), X)
                     model.all_O[l].data = Y.data
@@ -238,8 +238,8 @@ def learnable_mmf_train(A, L, K, drop, dim, wavelet_indices, rest_indices, epoch
     A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = model()
 
     loss = torch.norm(A - A_rec, p = 'fro')
-    print('---- Final loss ----')
-    print('Loss =', loss.item())
+    # print('---- Final loss ----')
+    # print('Loss =', loss.item())
 
     return A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets
 

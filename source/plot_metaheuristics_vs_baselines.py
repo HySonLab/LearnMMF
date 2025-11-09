@@ -8,7 +8,7 @@ from metaheuristics import evolutionary_algorithm, get_cost, directed_evolution
 start_time = time.time()
 
 # Data loading
-karate_laplacian = karate_def('D:\codebase\Learnable_MMF\data')
+karate_laplacian = karate_def(r'C:\Users\Khang Nguyen\Documents\GitHub\LearnMMF\data')
 N = karate_laplacian.size(0)
 
 # Baseline (original) MMF
@@ -43,7 +43,7 @@ ea_runtime = ea_end_time - ea_start_time
 
 # Learnable MMF (DE to select indices)
 de_start_time = time.time()
-wavelet_indices, rest_indices, de_cost, de_min_cost_per_gen, de_mean_cost_per_gen, de_all_time_min_cost_per_gen = directed_evolution(get_cost, karate_laplacian, L=26, K=8, population_size=100, generations=100, sample_kept_rate=0.5)
+wavelet_indices, rest_indices, de_cost, de_min_cost_per_gen, de_mean_cost_per_gen, de_all_time_min_cost_per_gen = directed_evolution(get_cost, karate_laplacian, L=26, K=8, population_size=20, generations=100, sample_kept_rate=0.3)
 de_end_time = time.time()
 de_runtime = de_end_time - de_start_time
 
