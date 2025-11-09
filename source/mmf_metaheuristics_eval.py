@@ -54,14 +54,14 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     # Learnable MMF (EA to select indices)
     wavelet_indices, rest_indices, ea_cost, ea_min_cost_per_gen, ea_mean_cost_per_gen, ea_all_time_min_cost_per_gen = evolutionary_algorithm(
         get_cost, karate_laplacian, L=26, K=8, 
-        population_size=100, generations=10, mutation_rate=0.2
+        population_size=100, generations=100, mutation_rate=0.2
     )
     results['ea_all_time_min'] = ea_all_time_min_cost_per_gen
     
     # Learnable MMF (DE to select indices)
     wavelet_indices, rest_indices, de_cost, de_min_cost_per_gen, de_mean_cost_per_gen, de_all_time_min_cost_per_gen = directed_evolution(
         get_cost, karate_laplacian, L=26, K=8, 
-        population_size=10, generations=10, sample_kept_rate=0.3
+        population_size=10, generations=100, sample_kept_rate=0.3
     )
     results['de_all_time_min'] = de_all_time_min_cost_per_gen
     
@@ -77,7 +77,7 @@ def main():
     start_time = time.time()
     
     # Configuration
-    num_experiments = 3  # Adjust this number based on your needs
+    num_experiments = 10  # Adjust this number based on your needs
     
     # Data loading
     karate_laplacian = karate_def(r'C:\Users\Khang Nguyen\Documents\GitHub\LearnMMF\data')
@@ -101,22 +101,28 @@ def main():
     print(f"Average time per experiment: {total_runtime/num_experiments:.2f} seconds")
     
     # Process results
-    generation = 10
+    generation = 100
     
     # Extract costs for each method
-    original_costs = [r['original_cost'] for r in all_results]
-    random_costs = [r['random_cost'] for r in all_results]
-    heuristics_costs = [r['heuristics_cost'] for r in all_results]
+    original_costs = np.array([r['original_cost'] for r in all_results])
+    random_costs = np.array([r['random_cost'] for r in all_results])
+    heuristics_costs = np.array([r['heuristics_cost'] for r in all_results])
     
     # Extract EA and DE trajectories
     ea_trajectories = np.array([r['ea_all_time_min'] for r in all_results])
     de_trajectories = np.array([r['de_all_time_min'] for r in all_results])
     
-    # Calculate statistics
+    # Calculate statistics for baseline methods
     original_mean = np.mean(original_costs)
-    random_mean = np.mean(random_costs)
-    heuristics_mean = np.mean(heuristics_costs)
+    original_std = np.std(original_costs)
     
+    random_mean = np.mean(random_costs)
+    random_std = np.std(random_costs)
+    
+    heuristics_mean = np.mean(heuristics_costs)
+    heuristics_std = np.std(heuristics_costs)
+    
+    # Calculate statistics for EA and DE
     ea_mean = np.mean(ea_trajectories, axis=0)
     ea_std = np.std(ea_trajectories, axis=0)
     
@@ -128,23 +134,39 @@ def main():
     
     generations = range(generation)
     
-    # Plot baseline methods (constant lines)
+    # Plot Original MMF with confidence interval
     plt.plot(generations, [original_mean] * generation, 
              label='Original MMF', linestyle='--', linewidth=2)
+    plt.fill_between(generations, 
+                     [original_mean - original_std] * generation, 
+                     [original_mean + original_std] * generation, 
+                     alpha=0.2)
+    
+    # Plot Random indices with confidence interval
     plt.plot(generations, [random_mean] * generation, 
              label='Random indices', linestyle='--', linewidth=2)
+    plt.fill_between(generations, 
+                     [random_mean - random_std] * generation, 
+                     [random_mean + random_std] * generation, 
+                     alpha=0.2)
+    
+    # Plot K neighbours heuristics with confidence interval
     plt.plot(generations, [heuristics_mean] * generation, 
              label='K neighbours heuristics', linestyle='--', linewidth=2)
+    plt.fill_between(generations, 
+                     [heuristics_mean - heuristics_std] * generation, 
+                     [heuristics_mean + heuristics_std] * generation, 
+                     alpha=0.2)
     
     # Plot EA with confidence interval
     plt.plot(generations, ea_mean, label='Best EA evaluation', linewidth=2)
     plt.fill_between(generations, ea_mean - ea_std, ea_mean + ea_std, 
-                     alpha=0.3, label='EA ±1 std')
+                     alpha=0.2)
     
     # Plot DE with confidence interval
     plt.plot(generations, de_mean, label='Best DE evaluation', linewidth=2)
     plt.fill_between(generations, de_mean - de_std, de_mean + de_std, 
-                     alpha=0.3, label='DE ±1 std')
+                     alpha=0.2)
     
     # Labels and formatting
     plt.xlabel('Generation', fontsize=12)
@@ -157,9 +179,9 @@ def main():
     # Print summary statistics
     print("\n=== Summary Statistics ===")
     print(f"Base Seed: {BASE_SEED}")
-    print(f"Original MMF: {original_mean:.4f} ± {np.std(original_costs):.4f}")
-    print(f"Random indices: {random_mean:.4f} ± {np.std(random_costs):.4f}")
-    print(f"K neighbours heuristics: {heuristics_mean:.4f} ± {np.std(heuristics_costs):.4f}")
+    print(f"Original MMF: {original_mean:.4f} ± {original_std:.4f}")
+    print(f"Random indices: {random_mean:.4f} ± {random_std:.4f}")
+    print(f"K neighbours heuristics: {heuristics_mean:.4f} ± {heuristics_std:.4f}")
     print(f"EA final: {ea_mean[-1]:.4f} ± {ea_std[-1]:.4f}")
     print(f"DE final: {de_mean[-1]:.4f} ± {de_std[-1]:.4f}")
     
@@ -167,9 +189,9 @@ def main():
     results_dict = {
         'base_seed': BASE_SEED,
         'num_experiments': num_experiments,
-        'original_costs': original_costs,
-        'random_costs': random_costs,
-        'heuristics_costs': heuristics_costs,
+        'original_costs': original_costs.tolist(),
+        'random_costs': random_costs.tolist(),
+        'heuristics_costs': heuristics_costs.tolist(),
         'ea_trajectories': ea_trajectories.tolist(),
         'de_trajectories': de_trajectories.tolist()
     }
