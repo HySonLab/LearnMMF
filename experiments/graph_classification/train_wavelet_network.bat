@@ -12,7 +12,7 @@ rem set dataset=DD
 rem set dataset=NCI1
 
 rem === Wavelet basis type ===
-set wavelet_type=baseline_mmf_basis
+set wavelet_type=learnable_mmf_basis
 rem set wavelet_type=learnable_mmf_basis
 
 rem === Create directories ===

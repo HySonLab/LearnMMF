@@ -1,15 +1,5 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim import Adam, Adagrad
-from torch import optim
-from torch.utils.data import DataLoader
-
 import numpy as np
-import argparse
-import os
-import time
-import matplotlib.pyplot as plt
 
 from mnist_dataset import mnist_dataset
 
