@@ -1,21 +1,12 @@
-import argparse
+import time
 import torch
+import argparse
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim import Adam, Adagrad
-from torch import optim
+from torch.optim import Adagrad
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
-import os
-import time
-
-import numpy as np
-import scipy.io
-import argparse
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import base64
-from io import BytesIO
 
 from Dataset import *
 

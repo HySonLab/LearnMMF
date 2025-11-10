@@ -1,12 +1,6 @@
 # Graph class
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim 
-
 import numpy as np
-import Molecule
-import Atom
 
 class Graph:
 	def __init__(self, molecules, all_atomic_type):
