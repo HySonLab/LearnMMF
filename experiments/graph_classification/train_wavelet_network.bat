@@ -1,48 +1,118 @@
 @echo off
 setlocal enabledelayedexpansion
 
+rem ============================================================================
+rem Wavelet Neural Network Trainer
+rem Usage: train_wavelet_network.bat [dataset] [method]
+rem Examples:
+rem   train_wavelet_network.bat MUTAG baseline
+rem   train_wavelet_network.bat PTC random
+rem   train_wavelet_network.bat DD k_neighbours
+rem   train_wavelet_network.bat NCI1 evolutionary_algorithm
+rem ============================================================================
+
+rem === Parse command line arguments ===
+set DATASET=%1
+set METHOD=%2
+
+rem === Validate arguments ===
+if "%DATASET%"=="" (
+    echo Error: Dataset not specified.
+    echo Usage: train_wavelet_network.bat [dataset] [method]
+    echo.
+    echo Available datasets: MUTAG, PTC, DD, NCI1
+    goto end
+)
+
+if "%METHOD%"=="" (
+    echo Error: Method not specified.
+    echo Usage: train_wavelet_network.bat [dataset] [method]
+    echo.
+    echo Available methods: baseline, random, k_neighbours, evolutionary_algorithm, directed_evolution
+    goto end
+)
+
 rem === Configuration ===
-set program=train_wavelet_network
-set data_folder=..\..\data\
-
-rem === Dataset (choose one) ===
-set dataset=MUTAG
-rem set dataset=PTC
-rem set dataset=DD
-rem set dataset=NCI1
-
-rem === Wavelet basis type ===
-set wavelet_type=learnable_mmf_basis
-rem set wavelet_type=learnable_mmf_basis
-
-rem === Create directories ===
-if not exist %program% mkdir %program%
-cd %program%
-if not exist %dataset% mkdir %dataset%
-cd ..
-set dir=%program%\%dataset%
-
-rem === File paths ===
-set adjs=%wavelet_type%\%dataset%\%dataset%.%wavelet_type%.adjs.pt
-set laplacians=%wavelet_type%\%dataset%\%dataset%.%wavelet_type%.laplacians.pt
-set mother_wavelets=%wavelet_type%\%dataset%\%dataset%.%wavelet_type%.mother_wavelets.pt
-set father_wavelets=%wavelet_type%\%dataset%\%dataset%.%wavelet_type%.father_wavelets.pt
+set PROGRAM=train_wavelet_network
+set DATA_FOLDER=..\..\data\
 
 rem === Hyperparameters ===
-set num_epoch=256
-set num_layers=6
-set hidden_dim=32
+set NUM_EPOCH=256
+set NUM_LAYERS=6
+set HIDDEN_DIM=32
+
+rem === Paths ===
+set BASIS_DIR=%METHOD%\%DATASET%
+set OUTPUT_DIR=%PROGRAM%\%DATASET%
+
+rem === Check if basis files exist ===
+if not exist "%BASIS_DIR%" (
+    echo Error: Wavelet basis not found for method '%METHOD%' and dataset '%DATASET%'.
+    echo Expected directory: %BASIS_DIR%
+    echo Please run generate_wavelet_basis.bat first.
+    goto end
+)
+
+rem === Create output directories ===
+if not exist "%PROGRAM%" mkdir "%PROGRAM%"
+if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
+
+rem === Basis file paths ===
+set ADJS=%BASIS_DIR%\%DATASET%.%METHOD%.adjs.pt
+set LAPLACIANS=%BASIS_DIR%\%DATASET%.%METHOD%.laplacians.pt
+set MOTHER_WAVELETS=%BASIS_DIR%\%DATASET%.%METHOD%.mother_wavelets.pt
+set FATHER_WAVELETS=%BASIS_DIR%\%DATASET%.%METHOD%.father_wavelets.pt
+
+rem === Verify all required files exist ===
+for %%F in ("%ADJS%" "%LAPLACIANS%" "%MOTHER_WAVELETS%" "%FATHER_WAVELETS%") do (
+    if not exist %%F (
+        echo Error: Missing required file: %%F
+        goto end
+    )
+)
+
+rem === Display configuration summary ===
+echo.
+echo ========================================
+echo Wavelet Neural Network Training
+echo ========================================
+echo Dataset:      %DATASET%
+echo Method:       %METHOD%
+echo Output Dir:   %OUTPUT_DIR%
+echo ----------------------------------------
+echo Num Epochs:   %NUM_EPOCH%
+echo Num Layers:   %NUM_LAYERS%
+echo Hidden Dim:   %HIDDEN_DIM%
+echo ========================================
+echo.
 
 rem === Cross-validation training ===
-for %%s in (0 1 2 3 4 5 6 7 8 9) do (
-    set name=%program%.dataset.%dataset%.split.%%s.num_epoch.%num_epoch%.num_layers.%num_layers%.hidden_dim.%hidden_dim%
-    echo Running split %%s ...
-    python %program%.py --dataset=%dataset% --data_folder=%data_folder% --dir=%dir% --name=!name! --num_epoch=%num_epoch% --adjs=%adjs% --laplacians=%laplacians% --mother_wavelets=%mother_wavelets% --father_wavelets=%father_wavelets% --split=%%s --num_layers=%num_layers% --hidden_dim=%hidden_dim%
+for %%S in (0 1 2 3 4 5 6 7 8 9) do (
+    set NAME=%PROGRAM%.dataset.%DATASET%.method.%METHOD%.split.%%S.num_epoch.%NUM_EPOCH%.num_layers.%NUM_LAYERS%.hidden_dim.%HIDDEN_DIM%
+    echo Running split %%S ...
+    python %PROGRAM%.py ^
+        --dataset=%DATASET% ^
+        --data_folder=%DATA_FOLDER% ^
+        --dir=%OUTPUT_DIR% ^
+        --name=!NAME! ^
+        --num_epoch=%NUM_EPOCH% ^
+        --adjs=%ADJS% ^
+        --laplacians=%LAPLACIANS% ^
+        --mother_wavelets=%MOTHER_WAVELETS% ^
+        --father_wavelets=%FATHER_WAVELETS% ^
+        --split=%%S ^
+        --num_layers=%NUM_LAYERS% ^
+        --hidden_dim=%HIDDEN_DIM%
 )
 
 rem === Summary of results ===
 echo.
 echo ===== Summary of Results =====
-findstr "Best accuracy:" %program%\%dataset%\*.log
+findstr "Best accuracy:" %OUTPUT_DIR%\*.log
 
+:end
+echo.
+echo ========================================
+echo Execution Complete
+echo ========================================
 endlocal
