@@ -6,9 +6,9 @@ rem Parametric Experiment Runner
 rem Usage: generate_wavelet_basis.bat [dataset] [method]
 rem Examples:
 rem   generate_wavelet_basis.bat MUTAG baseline
-rem   generate_wavelet_basis.bat PTC learnable
-rem   generate_wavelet_basis.bat DD metaheuristics
-rem   generate_wavelet_basis.bat NCI1 metaheuristics
+rem   generate_wavelet_basis.bat PTC evolutionary_algorithm
+rem   generate_wavelet_basis.bat DD directed_evolution
+rem   generate_wavelet_basis.bat NCI1 k_neighbours
 rem ============================================================================
 
 rem === Parse command line arguments ===
@@ -25,7 +25,7 @@ if "%DATASET%"=="" (
     echo   MUTAG, PTC, DD, NCI1
     echo.
     echo Available methods:
-    echo   baseline, learnable, metaheuristics
+    echo   baseline, random, k_neighbours, metaheuristics
     echo.
     echo Example: generate_wavelet_basis.bat MUTAG baseline
     goto end
@@ -38,7 +38,8 @@ if "%METHOD%"=="" (
     echo.
     echo Available methods:
     echo   baseline        - Baseline MMF
-    echo   learnable       - Learnable MMF
+    echo   random          - Random MMF
+    echo   k_neighbours    - k-Neighbors MMF
     echo   metaheuristics  - Metaheuristics MMF
     echo.
     echo Example: generate_wavelet_basis.bat MUTAG baseline
@@ -55,32 +56,24 @@ if /i "%DATASET%"=="MUTAG" (
     set DROP=1
     set EPOCHS=1024
     set LEARNING_RATE=1e-3
-    set NUM_LAYERS=6
-    set HIDDEN_DIM=32
 ) else if /i "%DATASET%"=="PTC" (
     set DIM=2
     set K=2
     set DROP=1
     set EPOCHS=1024
     set LEARNING_RATE=1e-3
-    set NUM_LAYERS=6
-    set HIDDEN_DIM=32
 ) else if /i "%DATASET%"=="DD" (
-    set DIM=3
-    set K=3
+    set DIM=2
+    set K=2
     set DROP=1
-    set EPOCHS=2048
-    set LEARNING_RATE=5e-4
-    set NUM_LAYERS=8
-    set HIDDEN_DIM=64
+    set EPOCHS=1024
+    set LEARNING_RATE=1e-3
 ) else if /i "%DATASET%"=="NCI1" (
     set DIM=2
     set K=2
     set DROP=1
     set EPOCHS=1024
     set LEARNING_RATE=1e-3
-    set NUM_LAYERS=6
-    set HIDDEN_DIM=32
 ) else (
     echo Error: Unknown dataset '%DATASET%'
     echo.
@@ -100,13 +93,15 @@ echo.
 
 rem === Route to appropriate method ===
 if /i "%METHOD%"=="baseline" goto run_baseline
-if /i "%METHOD%"=="learnable" goto run_learnable
-if /i "%METHOD%"=="metaheuristics" goto run_metaheuristics
+if /i "%METHOD%"=="random" goto run_random
+if /i "%METHOD%"=="k_neighbours" goto run_k_neighbours
+if /i "%METHOD%"=="evolutionary_algorithm" goto run_ea
+if /i "%METHOD%"=="directed_evolution" goto run_de
 
 echo Error: Unknown method '%METHOD%'
 echo.
 echo Available methods:
-echo   baseline, learnable, metaheuristics
+echo   baseline, random, evolutionary_algorithm, directed_evolution, k_neighbours
 goto end
 
 rem ============================================================================
@@ -116,70 +111,135 @@ echo Running Baseline MMF on %DATASET%...
 echo.
 
 set PROGRAM=baseline_mmf_basis
-call :setup_directories %PROGRAM%
+call :setup_directories %METHOD%
 
-set NAME=%DATASET%.%PROGRAM%
+set NAME=%DATASET%.%METHOD%
 
 python %PROGRAM%.py ^
     --data_folder=%DATA_FOLDER% ^
-    --dir=%PROGRAM% ^
+    --dir=%METHOD% ^
     --dataset=%DATASET% ^
     --name=%NAME% ^
     --dim=%DIM%
+    --seed=42
 
 echo.
 echo Baseline MMF completed for %DATASET%
-echo Results: %PROGRAM%\%DATASET%\
+echo Results: %METHOD%\%DATASET%\
 goto end
 
 rem ============================================================================
-:run_learnable
+:run_random
 rem ============================================================================
-echo Running Learnable MMF on %DATASET%...
+echo Running random MMF on %DATASET%...
 echo.
 
-set PROGRAM=learnable_mmf_basis
-call :setup_directories %PROGRAM%
+set PROGRAM=random_mmf_basis
+call :setup_directories %METHOD%
 
-set NAME=%DATASET%.%PROGRAM%
+set NAME=%DATASET%.%METHOD%
 
 python %PROGRAM%.py ^
     --data_folder=%DATA_FOLDER% ^
-    --dir=%PROGRAM% ^
+    --dir=%METHOD% ^
     --dataset=%DATASET% ^
     --name=%NAME% ^
     --K=%K% ^
     --drop=%DROP% ^
     --dim=%DIM% ^
     --epochs=%EPOCHS% ^
-    --learning_rate=%LEARNING_RATE%
+    --learning_rate=%LEARNING_RATE% ^
+    --seed=42
 
 echo.
-echo Learnable MMF completed for %DATASET%
-echo Results: %PROGRAM%\%DATASET%\
+echo Random MMF completed for %DATASET%
+echo Results: %METHOD%\%DATASET%\
 goto end
 
 rem ============================================================================
-:run_metaheuristics
+:run_k_neighbours
 rem ============================================================================
-echo Running Metaheuristics MMF on %DATASET%...
+echo Running k Neighbors MMF on %DATASET%...
 echo.
 
-set PROGRAM=metaheuristics_mmf_basis
-call :setup_directories %PROGRAM%
+set PROGRAM=k_neighbours_mmf_basis
+call :setup_directories %METHOD%
 
-set NAME=%DATASET%.%PROGRAM%
+set NAME=%DATASET%.%METHOD%
 
 python %PROGRAM%.py ^
     --data_folder=%DATA_FOLDER% ^
-    --dir=%PROGRAM% ^
+    --dir=%METHOD% ^
     --dataset=%DATASET% ^
     --name=%NAME% ^
-    --dim=%DIM%
+    --K=%K% ^
+    --drop=%DROP% ^
+    --dim=%DIM% ^
+    --epochs=%EPOCHS% ^
+    --learning_rate=%LEARNING_RATE% ^
+    --seed=42
 
 echo.
-echo Metaheuristics MMF completed for %DATASET%
-echo Results: %PROGRAM%\%DATASET%\
+echo Random MMF completed for %DATASET%
+echo Results: %METHOD%\%DATASET%\
+goto end
+
+rem ============================================================================
+:run_ea
+rem ============================================================================
+echo Running evolutionary algorithm MMF on %DATASET%...
+echo.
+
+set PROGRAM=metaheuristics_mmf_basis
+call :setup_directories %METHOD%
+
+set NAME=%DATASET%.%METHOD%
+
+python %PROGRAM%.py ^
+    --data_folder=%DATA_FOLDER% ^
+    --dir=%METHOD% ^
+    --dataset=%DATASET% ^
+    --name=%NAME% ^
+    --K=%K% ^
+    --drop=%DROP% ^
+    --dim=%DIM% ^
+    --method=ea ^
+    --epochs=%EPOCHS% ^
+    --learning_rate=%LEARNING_RATE% ^
+    --seed=42
+
+echo.
+echo Random MMF completed for %DATASET%
+echo Results: %METHOD%\%DATASET%\
+goto end
+
+rem ============================================================================
+:run_de
+rem ============================================================================
+echo Running directed evolution MMF on %DATASET%...
+echo.
+
+set PROGRAM=metaheuristics_mmf_basis
+call :setup_directories %METHOD%
+
+set NAME=%DATASET%.%METHOD%
+
+python %PROGRAM%.py ^
+    --data_folder=%DATA_FOLDER% ^
+    --dir=%METHOD% ^
+    --dataset=%DATASET% ^
+    --name=%NAME% ^
+    --K=%K% ^
+    --drop=%DROP% ^
+    --dim=%DIM% ^
+    --method=de ^
+    --epochs=%EPOCHS% ^
+    --learning_rate=%LEARNING_RATE% ^
+    --seed=42
+
+echo.
+echo Random MMF completed for %DATASET%
+echo Results: %METHOD%\%DATASET%\
 goto end
 
 rem ============================================================================

@@ -1,47 +1,124 @@
+"""
+Metaheuristics MMF Basis - Graph Wavelet Basis Generation with Parallel Processing
+
+This script generates wavelet bases for molecular graphs using metaheuristic
+optimization methods (Evolutionary Algorithm or Directed Evolution) with
+parallel processing for improved performance.
+
+Author: Khang Nguyen
+"""
+
 import torch
 import argparse
 import numpy as np
+import os
 from tqdm import tqdm
 from multiprocessing import Pool
-import os
+from pathlib import Path
 
-# Baseline MMF
+# Add source directory to path
 import sys
 sys.path.append('../../source/')
 from metaheuristics import generate_wavelet_basis
+from Dataset import Dataset
 
-# Data loader
-from Dataset import *
 
-def _parse_args():
-    parser = argparse.ArgumentParser(description = 'Metaheuristic MMF with Parallelization')
-    parser.add_argument('--dir', '-dir', type = str, default = 'wavelet_basis/', help = 'Directory')
-    parser.add_argument('--name', '-name', type = str, default = 'NAME', help = 'Name')
-    parser.add_argument('--dataset', '-dataset', type = str, default = '.', help = 'Graph kernel benchmark dataset')
-    parser.add_argument('--data_folder', '-data_folder', type = str, default = '../../data/', help = 'Data folder')
-    parser.add_argument('--method', '-method', type = str, default = 'evolutionary_algorithm', help = 'Method to select indices')
-    parser.add_argument('--K', '-K', type = int, default = 2, help = 'Size of the rotation matrix')
-    parser.add_argument('--dim', '-dim', type = int, default = 2, help = 'Dimension left at the end')
-    parser.add_argument('--seed', '-s', type = int, default = 123456789, help = 'Random seed')
-    parser.add_argument('--device', '-device', type = str, default = 'cpu', help = 'cuda/cpu')
-    parser.add_argument('--num_workers', '-num_workers', type = int, default = 10, help = 'Number of parallel workers')
-    args = parser.parse_args()
-    return args
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Generate metaheuristic MMF wavelet basis with parallel processing'
+    )
+    
+    # I/O arguments
+    parser.add_argument('--dir', type=str, default='wavelet_basis/',
+                        help='Output directory')
+    parser.add_argument('--name', type=str, default='NAME',
+                        help='Experiment name')
+    parser.add_argument('--dataset', type=str, default='.',
+                        help='Graph kernel benchmark dataset')
+    parser.add_argument('--data_folder', type=str, default='../../data/',
+                        help='Data folder path')
+    
+    # Model hyperparameters
+    parser.add_argument('--K', type=int, default=2,
+                        help='Size of the rotation matrix')
+    parser.add_argument('--dim', type=int, default=2,
+                        help='Dimension left at the end')
+    
+    # Metaheuristic method
+    parser.add_argument('--method', type=str, default='ea',
+                        choices=['ea', 'de'],
+                        help='Metaheuristic method: ea (Evolutionary Algorithm) or de (Directed Evolution)')
+    parser.add_argument('--epochs', type=int, default=1024,
+                        help='Number of epochs for optimization')
+    parser.add_argument('--learning_rate', type=float, default=1e-3,
+                        help='Learning rate for optimization')
+    
+    # Parallel processing
+    parser.add_argument('--num_workers', type=int, default=10,
+                        help='Number of parallel workers')
+    
+    # System arguments
+    parser.add_argument('--seed', type=int, default=123456789,
+                        help='Random seed for reproducibility')
+    parser.add_argument('--device', type=str, default='cpu',
+                        help='Device to use (cuda/cpu)')
+    
+    return parser.parse_args()
+
+
+def set_random_seeds(seed):
+    """Set random seeds for reproducibility."""
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def compute_normalized_laplacian(adj_matrix):
+    """
+    Compute normalized graph Laplacian from adjacency matrix.
+    
+    Args:
+        adj_matrix: Adjacency matrix (N x N)
+        
+    Returns:
+        Normalized Laplacian matrix
+    """
+    N = adj_matrix.size(0)
+    
+    # Add self-loops
+    adj_with_self_loops = adj_matrix + torch.eye(N)
+    
+    # Compute degree matrix
+    degrees = torch.sum(adj_with_self_loops, dim=0)
+    degree_inv_sqrt = torch.diag(1.0 / torch.sqrt(degrees))
+    
+    # Normalized Laplacian: D^(-1/2) * (D - A) * D^(-1/2)
+    degree_matrix = torch.diag(degrees)
+    laplacian_norm = torch.matmul(
+        torch.matmul(degree_inv_sqrt, degree_matrix - adj_with_self_loops),
+        degree_inv_sqrt
+    )
+    
+    return laplacian_norm
 
 
 def process_single_molecule(args_tuple):
     """
-    Process a single molecule to compute wavelet basis.
+    Process a single molecule to compute wavelet basis using metaheuristics.
     This function is designed to be called by multiprocessing.Pool.
     
     Args:
-        args_tuple: Tuple containing (sample_idx, molecule, K, dim, seed)
+        args_tuple: Tuple containing (sample_idx, molecule, K, dim, method, seed)
     
     Returns:
         Tuple containing (sample_idx, adj, laplacian, mother_coeffs, father_coeffs, 
                          mother_wavelets, father_wavelets)
     """
-    sample_idx, molecule, K, dim, seed = args_tuple
+    sample_idx, molecule, K, dim, method, seed = args_tuple
     
     # Set random seeds for this process
     np.random.seed(seed + sample_idx)
@@ -60,137 +137,203 @@ def process_single_molecule(args_tuple):
         adj[v, neighbors] = 1
     
     # Compute normalized graph Laplacian
-    adj_self = torch.Tensor(adj) + torch.eye(N)
-    D = torch.sum(adj_self, dim=0)
-    DD = torch.diag(1.0 / torch.sqrt(D))
-    L_norm = torch.matmul(torch.matmul(DD, torch.diag(D) - adj_self), DD)
+    laplacian = compute_normalized_laplacian(adj)
     
-    A = L_norm
+    # Calculate number of wavelet levels
     L = N - dim
     
     if L > 0:
         try:
-            A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets_, father_wavelets_ = \
-                generate_wavelet_basis(A, L=L, K=K, method='evolutionary_algorithm')
+            # Map method abbreviation to full name
+            method_name = {
+                'ea': 'evolutionary_algorithm',
+                'de': 'directed_evolution'
+            }.get(method, 'evolutionary_algorithm')
             
-            # Process mother coefficients
-            diag = torch.diag(mother_coefficients).unsqueeze(dim=0)
-            values_mother, _ = torch.sort(diag, descending=True)
+            # Generate wavelet basis using metaheuristic
+            A_rec, U, D, mother_coefficients, father_coefficients, \
+                mother_wavelets_raw, father_wavelets_raw = generate_wavelet_basis(
+                    laplacian,
+                    L=L,
+                    K=K,
+                    method=method_name,
+                    epochs=args.epochs,
+                    learning_rate=args.learning_rate,
+                )
             
-            # Process father coefficients
-            values_father, _ = torch.sort(father_coefficients.flatten(), descending=True)
-            values_father = values_father.unsqueeze(dim=0)
+            # Sort and extract mother coefficients
+            mother_diag = torch.diag(mother_coefficients).unsqueeze(dim=0)
+            mother_coeffs_sorted, _ = torch.sort(mother_diag, descending=True)
             
-            # Store wavelets
-            mother_wavelets_out = mother_wavelets_.unsqueeze(dim=0)
-            father_wavelets_out = father_wavelets_.unsqueeze(dim=0)
+            # Sort and extract father coefficients
+            father_coeffs_sorted, _ = torch.sort(
+                father_coefficients.flatten(),
+                descending=True
+            )
+            father_coeffs_sorted = father_coeffs_sorted.unsqueeze(dim=0)
+            
+            # Prepare wavelets for storage
+            mother_wavelets_out = mother_wavelets_raw.unsqueeze(dim=0)
+            father_wavelets_out = father_wavelets_raw.unsqueeze(dim=0)
             
             # Detach all tensors to remove gradient tracking before serialization
-            return (sample_idx, 
-                   adj.detach(), 
-                   L_norm.detach(), 
-                   values_mother.detach(), 
-                   values_father.detach(), 
-                   mother_wavelets_out.detach(), 
-                   father_wavelets_out.detach())
+            return (
+                sample_idx,
+                adj.detach(),
+                laplacian.detach(),
+                mother_coeffs_sorted.detach(),
+                father_coeffs_sorted.detach(),
+                mother_wavelets_out.detach(),
+                father_wavelets_out.detach()
+            )
+            
         except Exception as e:
             print(f"Error processing molecule {sample_idx}: {e}")
-            return (sample_idx, 
-                   adj.detach() if adj is not None else None, 
-                   L_norm.detach() if L_norm is not None else None, 
-                   None, None, None, None)
+            return (
+                sample_idx,
+                adj.detach() if adj is not None else None,
+                laplacian.detach() if laplacian is not None else None,
+                None, None, None, None
+            )
     else:
-        return (sample_idx, 
-               adj.detach(), 
-               L_norm.detach(), 
-               None, None, None, None)
+        # Invalid molecule (L <= 0)
+        return (
+            sample_idx,
+            adj.detach(),
+            laplacian.detach(),
+            None, None, None, None
+        )
+
+
+def load_dataset(data_folder, dataset_name):
+    """Load dataset from files."""
+    data_fn = f'{data_folder}/{dataset_name}/{dataset_name}.dat'
+    meta_fn = f'{data_folder}/{dataset_name}/{dataset_name}.meta'
+    return Dataset(data_fn, meta_fn)
 
 
 def main():
-    args = _parse_args()
-    log_name = args.dir + "/" + args.name + ".log"
-    LOG = open(log_name, "w")
+    """Main execution function."""
+    # Parse arguments
+    args = parse_args()
     
-    # Fix random seeds for reproducibility
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    np.random.seed(args.seed)
+    # Create output directory
+    output_dir = Path(args.dir) / args.dataset
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    device = args.device
-    print(f"Device: {device}")
-    print(f"Name: {args.name}")
-    print(f"Directory: {args.dir}")
-    print(f"Number of workers: {args.num_workers}")
+    # Setup logging
+    log_path = output_dir / f"{args.name}.log"
+    log_file = open(log_path, "w")
     
-    # Load data
-    data_fn = args.data_folder + '/' + args.dataset + '/' + args.dataset + '.dat'
-    meta_fn = args.data_folder + '/' + args.dataset + '/' + args.dataset + '.meta'
+    def log(message):
+        """Helper function to log messages."""
+        print(message)
+        log_file.write(message + "\n")
+        log_file.flush()
     
-    data = Dataset(data_fn, meta_fn)
-    num_data = data.nMolecules
+    # Set random seeds
+    set_random_seeds(args.seed)
     
-    print(f"Total molecules to process: {num_data}")
+    # Map method abbreviation to full name for display
+    method_full_name = {
+        'ea': 'Evolutionary Algorithm',
+        'de': 'Directed Evolution'
+    }.get(args.method, args.method)
+    
+    # Log configuration
+    log(f"Experiment: {args.name}")
+    log(f"Dataset: {args.dataset}")
+    log(f"Output directory: {args.dir}")
+    log(f"Device: {args.device}")
+    log(f"Metaheuristic method: {method_full_name} ({args.method})")
+    log(f"Hyperparameters: K={args.K}, dim={args.dim}")
+    log(f"Parallel workers: {args.num_workers}")
+    log(f"Random seed: {args.seed}")
+    log("-" * 60)
+    
+    # Load dataset
+    log("Loading dataset...")
+    data = load_dataset(args.data_folder, args.dataset)
+    num_molecules = data.nMolecules
+    log(f"Loaded {num_molecules} molecules")
+    log("-" * 60)
     
     # Prepare arguments for parallel processing
+    log("Preparing parallel processing...")
     process_args = [
-        (idx, data.molecules[idx], args.K, args.dim, args.seed)
-        for idx in range(num_data)
+        (idx, data.molecules[idx], args.K, args.dim, args.method, args.seed)
+        for idx in range(num_molecules)
     ]
     
     # Initialize result containers
-    adjs = [None] * num_data
-    laplacians = [None] * num_data
-    mother_coeffs = [None] * num_data
-    father_coeffs = [None] * num_data
-    mother_wavelets = [None] * num_data
-    father_wavelets = [None] * num_data
+    adjs = [None] * num_molecules
+    laplacians = [None] * num_molecules
+    mother_coeffs = [None] * num_molecules
+    father_coeffs = [None] * num_molecules
+    mother_wavelets = [None] * num_molecules
+    father_wavelets = [None] * num_molecules
     
     # Process molecules in parallel
-    print(f"\nProcessing {num_data} molecules using {args.num_workers} workers...")
+    log(f"Processing {num_molecules} molecules using {args.num_workers} workers...")
+    log("-" * 60)
     
     with Pool(processes=args.num_workers) as pool:
         # Use imap_unordered for better performance with progress bar
         results = list(tqdm(
             pool.imap_unordered(process_single_molecule, process_args),
-            total=num_data,
-            desc="Processing molecules"
+            total=num_molecules,
+            desc="Processing molecules",
+            unit="mol"
         ))
     
     # Collect results in the correct order
-    print("\nCollecting results...")
+    log("Collecting results...")
+    successful_count = 0
+    skipped_count = 0
+    
     for result in results:
         sample_idx, adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets = result
+        
         adjs[sample_idx] = adj
         laplacians[sample_idx] = laplacian
         mother_coeffs[sample_idx] = m_coeffs
         father_coeffs[sample_idx] = f_coeffs
         mother_wavelets[sample_idx] = m_wavelets
         father_wavelets[sample_idx] = f_wavelets
+        
+        # Count successful vs skipped
+        if m_coeffs is not None and f_coeffs is not None:
+            successful_count += 1
+        else:
+            skipped_count += 1
     
-    # Verify all data is present
-    assert len(adjs) == num_data
-    assert len(laplacians) == num_data
-    assert len(mother_coeffs) == num_data
-    assert len(father_coeffs) == num_data
-    assert len(mother_wavelets) == num_data
-    assert len(father_wavelets) == num_data
+    log("-" * 60)
+    log(f"Processing complete: {successful_count} successful, {skipped_count} skipped")
     
-    # Create output directory if it doesn't exist
-    output_dir = args.dir + '/' + args.dataset
-    os.makedirs(output_dir, exist_ok=True)
+    # Verify data integrity
+    assert len(adjs) == num_molecules
+    assert len(laplacians) == num_molecules
+    assert len(mother_coeffs) == num_molecules
+    assert len(father_coeffs) == num_molecules
+    assert len(mother_wavelets) == num_molecules
+    assert len(father_wavelets) == num_molecules
     
     # Save results
-    print("\nSaving results...")
-    torch.save(adjs, output_dir + '/' + args.name + '.adjs.pt')
-    torch.save(laplacians, output_dir + '/' + args.name + '.laplacians.pt')
-    torch.save(mother_coeffs, output_dir + '/' + args.name + '.mother_coeffs.pt')
-    torch.save(father_coeffs, output_dir + '/' + args.name + '.father_coeffs.pt')
-    torch.save(mother_wavelets, output_dir + '/' + args.name + '.mother_wavelets.pt')
-    torch.save(father_wavelets, output_dir + '/' + args.name + '.father_wavelets.pt')
+    log("Saving results...")
+    output_base = output_dir / args.name
     
-    print('Done!')
-    LOG.write('Processing completed successfully\n')
-    LOG.close()
+    torch.save(adjs, f"{output_base}.adjs.pt")
+    torch.save(laplacians, f"{output_base}.laplacians.pt")
+    torch.save(mother_coeffs, f"{output_base}.mother_coeffs.pt")
+    torch.save(father_coeffs, f"{output_base}.father_coeffs.pt")
+    torch.save(mother_wavelets, f"{output_base}.mother_wavelets.pt")
+    torch.save(father_wavelets, f"{output_base}.father_wavelets.pt")
+    
+    log(f"Results saved to: {output_base}.*")
+    log("=" * 60)
+    log("Done!")
+    
+    log_file.close()
 
 
 if __name__ == '__main__':
