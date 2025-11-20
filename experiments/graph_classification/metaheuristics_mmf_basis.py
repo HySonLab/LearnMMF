@@ -112,13 +112,13 @@ def process_single_molecule(args_tuple):
     This function is designed to be called by multiprocessing.Pool.
     
     Args:
-        args_tuple: Tuple containing (sample_idx, molecule, K, dim, method, seed)
+        args_tuple: Tuple containing (sample_idx, molecule, K, dim, method, epochs, learning_rate, seed)
     
     Returns:
         Tuple containing (sample_idx, adj, laplacian, mother_coeffs, father_coeffs, 
                          mother_wavelets, father_wavelets)
     """
-    sample_idx, molecule, K, dim, method, seed = args_tuple
+    sample_idx, molecule, K, dim, method, epochs, learning_rate, seed = args_tuple
     
     # Set random seeds for this process
     np.random.seed(seed + sample_idx)
@@ -157,8 +157,8 @@ def process_single_molecule(args_tuple):
                     L=L,
                     K=K,
                     method=method_name,
-                    epochs=args.epochs,
-                    learning_rate=args.learning_rate,
+                    epochs=epochs,
+                    learning_rate=learning_rate,
                 )
             
             # Sort and extract mother coefficients
@@ -247,6 +247,7 @@ def main():
     log(f"Device: {args.device}")
     log(f"Metaheuristic method: {method_full_name} ({args.method})")
     log(f"Hyperparameters: K={args.K}, dim={args.dim}")
+    log(f"Optimization: epochs={args.epochs}, learning_rate={args.learning_rate}")
     log(f"Parallel workers: {args.num_workers}")
     log(f"Random seed: {args.seed}")
     log("-" * 60)
@@ -261,7 +262,7 @@ def main():
     # Prepare arguments for parallel processing
     log("Preparing parallel processing...")
     process_args = [
-        (idx, data.molecules[idx], args.K, args.dim, args.method, args.seed)
+        (idx, data.molecules[idx], args.K, args.dim, args.method, args.epochs, args.learning_rate, args.seed)
         for idx in range(num_molecules)
     ]
     

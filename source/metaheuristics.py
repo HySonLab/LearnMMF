@@ -241,6 +241,6 @@ def generate_wavelet_basis(matrix, L, K, method, epochs=1024, learning_rate=1e-3
     if method == 'evolutionary_algorithm':
         wavelet_indices, rest_indices, _, _, _, _ = evolutionary_algorithm(get_cost, matrix, L = L, K = K, population_size = 100, generations = 100, mutation_rate = 0.2)
     elif method == 'directed_evolution':
-        wavelet_indices, rest_indices, _, _, _, _ = directed_evolution(get_cost, matrix, L = L, K = K, population_size = 10, generations = 100, sample_kept_rate = 0.5)
+        wavelet_indices, rest_indices, _, _, _, _ = directed_evolution(get_cost, matrix, L = L, K = K, population_size = 10, generations = 100, sample_kept_rate = 0.3)
     dim = matrix.size(0) - L
     return learnable_mmf_train(matrix, L = L, K = K, drop = 1, dim = dim, wavelet_indices = wavelet_indices.unsqueeze(-1).tolist(), rest_indices = rest_indices.tolist(), epochs = epochs, learning_rate = learning_rate, early_stop = True)

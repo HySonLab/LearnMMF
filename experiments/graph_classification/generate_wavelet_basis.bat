@@ -49,6 +49,19 @@ if "%METHOD%"=="" (
 
 rem === Configuration ===
 set DATA_FOLDER=..\..\data\
+set CONDA_ENV=LearnMMF
+
+rem === Activate conda environment ===
+echo Activating conda environment: %CONDA_ENV%...
+call conda activate %CONDA_ENV%
+if errorlevel 1 (
+    echo Error: Failed to activate conda environment '%CONDA_ENV%'
+    echo Please ensure conda is initialized and the environment exists.
+    echo You can create it with: conda create -n LearnMMF python=3.8
+    goto end
+)
+echo Conda environment '%CONDA_ENV%' activated successfully.
+echo.
 
 rem === Set dataset-specific parameters ===
 if /i "%DATASET%"=="MUTAG" (
@@ -235,7 +248,6 @@ python %PROGRAM%.py ^
     --dataset=%DATASET% ^
     --name=%NAME% ^
     --K=%K% ^
-    --drop=%DROP% ^
     --dim=%DIM% ^
     --method=de ^
     --epochs=%EPOCHS% ^
@@ -314,5 +326,8 @@ echo Execution Complete
 echo ========================================
 echo.
 echo View timing summary: type timing_logs\timing_summary.txt
+
+rem === Deactivate conda environment ===
+call conda deactivate
 
 endlocal
