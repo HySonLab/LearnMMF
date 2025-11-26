@@ -272,7 +272,6 @@ case "${METHOD,,}" in
             --dataset="$DATASET" \
             --name="$NAME" \
             --K="$K" \
-            --drop="$DROP" \
             --dim="$DIM" \
             --method=ea \
             --epochs="$EPOCHS" \
