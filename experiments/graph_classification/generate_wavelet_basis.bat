@@ -77,7 +77,7 @@ if /i "%DATASET%"=="MUTAG" (
     set EPOCHS=1024
     set LEARNING_RATE=1e-3
 ) else if /i "%DATASET%"=="DD" (
-    set DIM=2
+    set DIM=150
     set K=2
     set DROP=1
     set EPOCHS=1024
@@ -220,7 +220,6 @@ python %PROGRAM%.py ^
     --dataset=%DATASET% ^
     --name=%NAME% ^
     --K=%K% ^
-    --drop=%DROP% ^
     --dim=%DIM% ^
     --method=ea ^
     --epochs=%EPOCHS% ^

@@ -1,4 +1,5 @@
 import math
+import time
 import torch
 import random
 import numpy as np
@@ -48,10 +49,59 @@ def get_nearest_indices(matrix, indices, K):
     return nearest_indices.t()
 
 
-def get_cost(matrix, indices, rest_indices, L, K):
-    dim = matrix.size(0) - L
-    matrix_rec = learnable_mmf_train(matrix, L = L, K = K, drop = 1, dim = dim, wavelet_indices = indices.unsqueeze(-1).tolist(), rest_indices = rest_indices.tolist(), epochs = 0, learning_rate = 1e-4, early_stop = True)[0]
-    return torch.norm(matrix - matrix_rec, p = 'fro').item()
+def get_cost(matrix, indices, rest, L, K, device='cpu'):
+    N = matrix.size(0)
+    active_index = torch.ones(N)
+    selected_indices = []
+        
+    # The current matrix
+    A = torch.Tensor(matrix.data)
+    wavelet_indices = indices.unsqueeze(-1).tolist()
+    rest_indices = rest.tolist()
+
+    for l in range(L):
+        # Set the indices for this rotation
+        indices = wavelet_indices[l] + rest_indices[l]
+        indices.sort()
+        assert len(indices) == K
+        index = torch.zeros(N)
+        for k in range(K):
+            index[indices[k]] = 1
+        selected_indices.append(index)
+
+        # Outer product map
+        outer = torch.outer(index, index)
+
+        # Eigen-decomposition
+        A_part = torch.matmul(A[index == 1], torch.transpose(A[index == 1], 0, 1).contiguous())
+        values, vectors = torch.eig(torch.reshape(A_part, (K, K)), True)
+
+        # Rotation matrix
+        O = torch.nn.Parameter(vectors.transpose(0, 1).contiguous().data, requires_grad = True)
+
+        # Full Jacobian rotation matrix
+        U = torch.eye(N).to(device = device)
+        U[outer == 1] = O.flatten()
+
+        if l == 0:
+            right = U
+        else:
+            right = torch.matmul(U, right)
+
+        # New A
+        A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous())
+
+        # Drop the wavelet
+        active_index[wavelet_indices[l]] = 0
+
+    # Block diagonal left
+    left_index = torch.outer(active_index, active_index).to(device = device)
+    left_index = torch.eye(N).to(device = device) - torch.diag(torch.diag(left_index)) + left_index
+    D = A * left_index
+
+    # Reconstruction
+    A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
+    return torch.norm(matrix - A_rec, p = 'fro').item()
 
 
 def crossover(parent1, parent2):
@@ -100,6 +150,7 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
     all_time_best_solution = None
     
     for gen in range(generations):
+        start_time = time.time()
         # Evaluation
         costs = torch.tensor([cost_function(matrix, indices, nearest_indices[indices, :], L, K) for indices in population], device=device)
         min_cost_idx = torch.argmin(costs)
@@ -151,6 +202,9 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
                 offspring_population[i] = mutated_sample
                 assert len(offspring_population[i].tolist()) == len(set(offspring_population[i].tolist()))
 
+        end_time = time.time()
+        print(f"Generation {gen}: time = {end_time - start_time:.4f} seconds")  
+
         population = torch.stack(offspring_population)
     
     # Final evaluation
@@ -180,8 +234,12 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
     all_time_best_solution = None
     
     for gen in range(generations):
+        start_iter = time.time()
         # Evaluation
+        start_time = time.time()
         costs = torch.tensor([cost_function(matrix, indices, nearest_indices[indices, :], L, K) for indices in population], device=device)
+        end_time = time.time()
+        print(f"Generation {gen}: Evaluation time = {end_time - start_time:.4f} seconds")
         min_cost_idx = torch.argmin(costs)
         best_solution = population[min_cost_idx]
 
@@ -223,6 +281,8 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
         offspring_population = offspring_population[: population_size - len(selected_population)]
         population = torch.stack(offspring_population + [sample for sample in selected_population])
         assert len(population) == population_size
+        end_time = time.time()
+        print(f"Generation {gen}: time = {end_time - start_iter:.4f} seconds")
     
     # Final evaluation
     final_costs = torch.tensor([cost_function(matrix, indices, nearest_indices[indices, :], L, K) for indices in population], device=device)
@@ -239,8 +299,8 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
 def generate_wavelet_basis(matrix, L, K, method, epochs=1024, learning_rate=1e-3):
     wavelet_indices, rest_indices = None, None
     if method == 'evolutionary_algorithm':
-        wavelet_indices, rest_indices, _, _, _, _ = evolutionary_algorithm(get_cost, matrix, L = L, K = K, population_size = 100, generations = 100, mutation_rate = 0.2)
+        wavelet_indices, rest_indices, _, _, _, _ = evolutionary_algorithm(get_cost, matrix, L = L, K = K, population_size = 100, generations = 40, mutation_rate = 0.2)
     elif method == 'directed_evolution':
-        wavelet_indices, rest_indices, _, _, _, _ = directed_evolution(get_cost, matrix, L = L, K = K, population_size = 10, generations = 100, sample_kept_rate = 0.3)
+        wavelet_indices, rest_indices, _, _, _, _ = directed_evolution(get_cost, matrix, L = L, K = K, population_size = 10, generations = 40, sample_kept_rate = 0.3)
     dim = matrix.size(0) - L
     return learnable_mmf_train(matrix, L = L, K = K, drop = 1, dim = dim, wavelet_indices = wavelet_indices.unsqueeze(-1).tolist(), rest_indices = rest_indices.tolist(), epochs = epochs, learning_rate = learning_rate, early_stop = True)
