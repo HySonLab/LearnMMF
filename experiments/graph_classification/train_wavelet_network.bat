@@ -35,6 +35,19 @@ if "%METHOD%"=="" (
 rem === Configuration ===
 set PROGRAM=train_wavelet_network
 set DATA_FOLDER=..\..\data\
+set CONDA_ENV=LearnMMF
+
+rem === Activate conda environment ===
+echo Activating conda environment: %CONDA_ENV%...
+call conda activate %CONDA_ENV%
+if errorlevel 1 (
+    echo Error: Failed to activate conda environment '%CONDA_ENV%'
+    echo Please ensure conda is initialized and the environment exists.
+    echo You can create it with: conda create -n LearnMMF python=3.8
+    goto end
+)
+echo Conda environment '%CONDA_ENV%' activated successfully.
+echo.
 
 rem === Hyperparameters ===
 set NUM_EPOCH=256
@@ -43,7 +56,7 @@ set HIDDEN_DIM=32
 
 rem === Paths ===
 set BASIS_DIR=%METHOD%\%DATASET%
-set OUTPUT_DIR=%PROGRAM%\%DATASET%
+set OUTPUT_DIR=%PROGRAM%\%METHOD%\%DATASET%
 
 rem === Check if basis files exist ===
 if not exist "%BASIS_DIR%" (
@@ -107,12 +120,43 @@ for %%S in (0 1 2 3 4 5 6 7 8 9) do (
 
 rem === Summary of results ===
 echo.
-echo ===== Summary of Results =====
-findstr "Best accuracy:" %OUTPUT_DIR%\*.log
+echo ========================================
+echo Summary of Results
+echo ========================================
+echo.
+
+rem === Extract best accuracies and save to temporary file ===
+set RESULTS=%OUTPUT_DIR%\accuracies.txt
+if exist "%RESULTS%" del "%RESULTS%"
+
+echo Extracting best accuracies from logs...
+for %%S in (0 1 2 3 4 5 6 7 8 9) do (
+    set NAME=%PROGRAM%.dataset.%DATASET%.method.%METHOD%.split.%%S.num_epoch.%NUM_EPOCH%.num_layers.%NUM_LAYERS%.hidden_dim.%HIDDEN_DIM%
+    set LOGFILE=%OUTPUT_DIR%\!NAME!.log
+    if exist "!LOGFILE!" (
+        for /f "tokens=3" %%A in ('findstr "Best accuracy:" "!LOGFILE!"') do (
+            echo %%A >> "%RESULTS%"
+        )
+    )
+)
+
+rem === Display individual results ===
+echo Individual Results:
+echo -------------------
+set /a SPLIT_NUM=0
+for /f %%A in (%RESULTS%) do (
+    echo Split !SPLIT_NUM!: %%A
+    set /a SPLIT_NUM+=1
+)
+echo.
 
 :end
 echo.
 echo ========================================
 echo Execution Complete
 echo ========================================
+
+rem === Deactivate conda environment ===
+call conda deactivate
+
 endlocal

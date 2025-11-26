@@ -3,6 +3,7 @@ import torch
 import argparse
 import numpy as np
 import torch.nn as nn
+from tqdm import tqdm
 import torch.nn.functional as F
 from torch.optim import Adagrad
 from torch.utils.data import DataLoader
@@ -27,7 +28,7 @@ def _parse_args():
     parser.add_argument('--num_layers', '-num_layers', type = int, default = 4, help = 'Number of layers')
     parser.add_argument('--hidden_dim', '-hidden_dim', type = int, default = 100, help = 'Hidden dimension')
     parser.add_argument('--seed', '-s', type = int, default = 123456789, help = 'Random seed')
-    parser.add_argument('--device', '-device', type = str, default = 'cpu', help = 'cuda/cpu')
+    parser.add_argument('--device', '-device', type = str, default = 'cuda', help = 'cuda/cpu')
     args = parser.parse_args()
     return args
 
@@ -41,14 +42,25 @@ torch.manual_seed(args.seed)
 
 # Fix GPU torch random seed
 torch.cuda.manual_seed(args.seed)
+torch.cuda.manual_seed_all(args.seed)
 
 # Fix the Numpy random seed
 np.random.seed(args.seed)
 
-# Train on CPU (hide GPU) due to memory constraints
-# os.environ['CUDA_VISIBLE_DEVICES'] = ""
-device = args.device
-print(device)
+# Set device
+if args.device == 'cuda':
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        print(f'Using GPU: {torch.cuda.get_device_name(0)}')
+        LOG.write(f'Using GPU: {torch.cuda.get_device_name(0)}\n')
+    else:
+        device = torch.device('cpu')
+        print('CUDA not available, using CPU')
+        LOG.write('CUDA not available, using CPU\n')
+else:
+    device = torch.device('cpu')
+    print('Using CPU')
+    LOG.write('Using CPU\n')
 
 print(args.name)
 print(args.dir)
@@ -140,15 +152,15 @@ class Wavelet_Network(nn.Module):
         self.output_dim = output_dim
         self.device = device
 
-        self.input_layer_1 = nn.Linear(self.input_dim, self.hidden_dim).to(device = self.device)
-        self.input_layer_2 = nn.Linear(self.hidden_dim, self.hidden_dim).to(device = self.device)
+        self.input_layer_1 = nn.Linear(self.input_dim, self.hidden_dim)
+        self.input_layer_2 = nn.Linear(self.hidden_dim, self.hidden_dim)
 
         self.hidden_layers = nn.ModuleList()
         for layer in range(self.num_layers):
-            self.hidden_layers.append(nn.Linear(self.hidden_dim, self.hidden_dim).to(device = self.device))
+            self.hidden_layers.append(nn.Linear(self.hidden_dim, self.hidden_dim))
 
-        self.output_layer_1 = nn.Linear(self.hidden_dim * (self.num_layers + 1), self.hidden_dim).to(device = self.device)
-        self.output_layer_2 = nn.Linear(self.hidden_dim, self.output_dim).to(device = self.device)
+        self.output_layer_1 = nn.Linear(self.hidden_dim * (self.num_layers + 1), self.hidden_dim)
+        self.output_layer_2 = nn.Linear(self.hidden_dim, self.output_dim)
 
     def forward(self, W, f):
         all_hiddens = []
@@ -237,8 +249,10 @@ model = Wavelet_Network(
         num_layers = args.num_layers, 
         input_dim = num_features, 
         hidden_dim = args.hidden_dim,
-        output_dim = data.nClasses
-)
+        output_dim = data.nClasses,
+        device = device
+).to(device)
+
 optimizer = Adagrad(model.parameters(), lr = args.learning_rate)
 
 # Compute accuracy
@@ -253,83 +267,66 @@ def accuracy(predict, target):
     acc /= num_samples
     return acc
 
-# Train model
+# Train model with global epoch progress bar
 best_acc = 0
-for epoch in range(args.num_epoch):
-    print('--------------------------------------')
-    print('Epoch', epoch)
-    LOG.write('--------------------------------------\n')
-    LOG.write('Epoch ' + str(epoch) + '\n')
+epoch_bar = tqdm(range(args.num_epoch), desc="Training Progress", ncols=100)
 
+for epoch in epoch_bar:
     # Training
-    t = time.time()
+    model.train()
     total_loss = 0.0
     nBatch = 0
-    for batch_idx, data in enumerate(train_dataloader):
+
+    for data in train_dataloader:
         optimizer.zero_grad()
 
-        matrices = data['matrices'].to(device = device)
-        bases = data['bases'].to(device = device)
-        features = data['features'].float().to(device = device)
-        target = data['labels'].to(device = device)
+        matrices = data['matrices'].to(device)
+        bases = data['bases'].to(device)
+        features = data['features'].float().to(device)
+        target = data['labels'].to(device)
 
         predict = model(bases, features)
-
-        loss = F.binary_cross_entropy(predict.view(-1), target.view(-1), reduction = 'mean')
+        loss = F.binary_cross_entropy(predict.view(-1), target.view(-1), reduction="mean")
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
         nBatch += 1
-        if batch_idx % 100 == 0:
-            print('Batch', batch_idx, '/', len(train_dataloader),': Loss =', loss.item())
-            LOG.write('Batch ' + str(batch_idx) + '/' + str(len(train_dataloader)) + ': Loss = ' + str(loss.item()) + '\n')
 
-    avg_loss = total_loss / nBatch
-    print('Train average loss:', avg_loss)
-    LOG.write('Train average loss: ' + str(avg_loss) + '\n')
-    print("Train time =", "{:.5f}".format(time.time() - t))
-    LOG.write("Train time = " + "{:.5f}".format(time.time() - t) + "\n")
-
-    # Testing
-    t = time.time()
+    # Testing (no prints)
     model.eval()
-
     all_predict = []
     all_target = []
 
     with torch.no_grad():
-        for batch_idx, data in enumerate(test_dataloader):
-            matrices = data['matrices'].to(device = device)
-            bases = data['bases'].to(device = device)
-            features = data['features'].float().to(device = device)
-            target = data['labels'].to(device = device)
+        for data in test_dataloader:
+            matrices = data['matrices'].to(device)
+            bases = data['bases'].to(device)
+            features = data['features'].float().to(device)
+            target = data['labels'].to(device)
 
             predict = model(bases, features)
 
             all_predict.append(predict)
             all_target.append(target)
-        
-        # Compute accuracies
-        all_predict = torch.cat(all_predict, dim = 0)
-        all_target = torch.cat(all_target, dim = 0)
 
-        acc = accuracy(all_predict, all_target)
-        print('Test accuracy:', acc)
+    all_predict = torch.cat(all_predict, dim=0)
+    all_target = torch.cat(all_target, dim=0)
 
-        print("Test time =", "{:.5f}".format(time.time() - t))
-        LOG.write("Test time = " + "{:.5f}".format(time.time() - t) + "\n")
+    acc = accuracy(all_predict, all_target)
 
+    # Update best model silently
     if acc > best_acc:
         best_acc = acc
-        print('Current best accuracy updated:', best_acc)
-        LOG.write('Current best accuracy updated: ' + str(best_acc) + '\n')
-
         torch.save(model.state_dict(), model_name)
 
-        print("Save the best model to " + model_name)
-        LOG.write("Save the best model to " + model_name + "\n")
+# After training
+print("Best accuracy:", best_acc)
+LOG.write("Best accuracy: " + str(best_acc) + "\n")
 
-print('Best accuracy:', best_acc)
-LOG.write('Best accuracy: ' + str(best_acc) + '\n')
+# Log GPU memory usage if using CUDA
+if device.type == 'cuda':
+    print(f'Max GPU memory allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB')
+    LOG.write(f'Max GPU memory allocated: {torch.cuda.max_memory_allocated(device) / 1024**3:.2f} GB\n')
+
 LOG.close()

@@ -55,7 +55,7 @@ def parse_args():
                         help='Learning rate for optimization')
     
     # Parallel processing
-    parser.add_argument('--num_workers', type=int, default=10,
+    parser.add_argument('--num_workers', type=int, default=1,
                         help='Number of parallel workers')
     
     # System arguments
