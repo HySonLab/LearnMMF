@@ -1,9 +1,8 @@
 """
-Metaheuristics MMF Basis - Graph Wavelet Basis Generation with Parallel Processing
+Metaheuristics MMF Basis - Graph Wavelet Basis Generation
 
 This script generates wavelet bases for molecular graphs using metaheuristic
-optimization methods (Evolutionary Algorithm or Directed Evolution) with
-parallel processing for improved performance.
+optimization methods (Evolutionary Algorithm or Directed Evolution).
 
 Author: Khang Nguyen
 """
@@ -13,7 +12,6 @@ import argparse
 import numpy as np
 import os
 from tqdm import tqdm
-from multiprocessing import Pool
 from pathlib import Path
 
 # Add source directory to path
@@ -26,7 +24,7 @@ from Dataset import Dataset
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description='Generate metaheuristic MMF wavelet basis with parallel processing'
+        description='Generate metaheuristic MMF wavelet basis'
     )
     
     # I/O arguments
@@ -53,10 +51,6 @@ def parse_args():
                         help='Number of epochs for optimization')
     parser.add_argument('--learning_rate', type=float, default=1e-3,
                         help='Learning rate for optimization')
-    
-    # Parallel processing
-    parser.add_argument('--num_workers', type=int, default=1,
-                        help='Number of parallel workers')
     
     # System arguments
     parser.add_argument('--seed', type=int, default=123456789,
@@ -106,29 +100,28 @@ def compute_normalized_laplacian(adj_matrix):
     return laplacian_norm
 
 
-def process_single_molecule(args_tuple):
+def process_single_molecule(sample_idx, molecule, K, dim, method, epochs, learning_rate):
     """
     Process a single molecule to compute wavelet basis using metaheuristics.
-    This function is designed to be called by multiprocessing.Pool.
     
     Args:
-        args_tuple: Tuple containing (sample_idx, molecule, K, dim, method, epochs, learning_rate, seed)
+        sample_idx: Index of the sample
+        molecule: Molecule object
+        K: Size of rotation matrix
+        dim: Dimension left at the end
+        method: Metaheuristic method ('ea' or 'de')
+        epochs: Number of optimization epochs
+        learning_rate: Learning rate for optimization
     
     Returns:
-        Tuple containing (sample_idx, adj, laplacian, mother_coeffs, father_coeffs, 
+        Tuple containing (adj, laplacian, mother_coeffs, father_coeffs, 
                          mother_wavelets, father_wavelets)
     """
-    sample_idx, molecule, K, dim, method, epochs, learning_rate, seed = args_tuple
-    
-    # Set random seeds for this process
-    np.random.seed(seed + sample_idx)
-    torch.manual_seed(seed + sample_idx)
-    
     N = molecule.nAtoms
     
     # Skip molecules that are too large
     if N > 512:
-        return (sample_idx, None, None, None, None, None, None)
+        return (None, None, None, None, None, None)
     
     # Build adjacency matrix
     adj = torch.zeros(N, N)
@@ -160,7 +153,7 @@ def process_single_molecule(args_tuple):
                     epochs=epochs,
                     learning_rate=learning_rate,
                 )
-            
+                        
             # Sort and extract mother coefficients
             mother_diag = torch.diag(mother_coefficients).unsqueeze(dim=0)
             mother_coeffs_sorted, _ = torch.sort(mother_diag, descending=True)
@@ -176,9 +169,8 @@ def process_single_molecule(args_tuple):
             mother_wavelets_out = mother_wavelets_raw.unsqueeze(dim=0)
             father_wavelets_out = father_wavelets_raw.unsqueeze(dim=0)
             
-            # Detach all tensors to remove gradient tracking before serialization
+            # Detach all tensors to remove gradient tracking
             return (
-                sample_idx,
                 adj.detach(),
                 laplacian.detach(),
                 mother_coeffs_sorted.detach(),
@@ -190,7 +182,6 @@ def process_single_molecule(args_tuple):
         except Exception as e:
             print(f"Error processing molecule {sample_idx}: {e}")
             return (
-                sample_idx,
                 adj.detach() if adj is not None else None,
                 laplacian.detach() if laplacian is not None else None,
                 None, None, None, None
@@ -198,7 +189,6 @@ def process_single_molecule(args_tuple):
     else:
         # Invalid molecule (L <= 0)
         return (
-            sample_idx,
             adj.detach(),
             laplacian.detach(),
             None, None, None, None
@@ -248,7 +238,6 @@ def main():
     log(f"Metaheuristic method: {method_full_name} ({args.method})")
     log(f"Hyperparameters: K={args.K}, dim={args.dim}")
     log(f"Optimization: epochs={args.epochs}, learning_rate={args.learning_rate}")
-    log(f"Parallel workers: {args.num_workers}")
     log(f"Random seed: {args.seed}")
     log("-" * 60)
     
@@ -259,48 +248,32 @@ def main():
     log(f"Loaded {num_molecules} molecules")
     log("-" * 60)
     
-    # Prepare arguments for parallel processing
-    log("Preparing parallel processing...")
-    process_args = [
-        (idx, data.molecules[idx], args.K, args.dim, args.method, args.epochs, args.learning_rate, args.seed)
-        for idx in range(num_molecules)
-    ]
-    
     # Initialize result containers
-    adjs = [None] * num_molecules
-    laplacians = [None] * num_molecules
-    mother_coeffs = [None] * num_molecules
-    father_coeffs = [None] * num_molecules
-    mother_wavelets = [None] * num_molecules
-    father_wavelets = [None] * num_molecules
+    adjs = []
+    laplacians = []
+    mother_coeffs = []
+    father_coeffs = []
+    mother_wavelets = []
+    father_wavelets = []
     
-    # Process molecules in parallel
-    log(f"Processing {num_molecules} molecules using {args.num_workers} workers...")
+    # Process molecules sequentially
+    log(f"Processing {num_molecules} molecules...")
     log("-" * 60)
     
-    with Pool(processes=args.num_workers) as pool:
-        # Use imap_unordered for better performance with progress bar
-        results = list(tqdm(
-            pool.imap_unordered(process_single_molecule, process_args),
-            total=num_molecules,
-            desc="Processing molecules",
-            unit="mol"
-        ))
-    
-    # Collect results in the correct order
-    log("Collecting results...")
     successful_count = 0
     skipped_count = 0
     
-    for result in results:
-        sample_idx, adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets = result
+    for idx in tqdm(range(num_molecules), desc="Processing molecules", unit="mol"):
+        adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets = process_single_molecule(
+            idx, data.molecules[idx], args.K, args.dim, args.method, args.epochs, args.learning_rate
+        )
         
-        adjs[sample_idx] = adj
-        laplacians[sample_idx] = laplacian
-        mother_coeffs[sample_idx] = m_coeffs
-        father_coeffs[sample_idx] = f_coeffs
-        mother_wavelets[sample_idx] = m_wavelets
-        father_wavelets[sample_idx] = f_wavelets
+        adjs.append(adj)
+        laplacians.append(laplacian)
+        mother_coeffs.append(m_coeffs)
+        father_coeffs.append(f_coeffs)
+        mother_wavelets.append(m_wavelets)
+        father_wavelets.append(f_wavelets)
         
         # Count successful vs skipped
         if m_coeffs is not None and f_coeffs is not None:

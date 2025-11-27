@@ -68,25 +68,25 @@ if /i "%DATASET%"=="MUTAG" (
     set DIM=2
     set K=2
     set DROP=1
-    set EPOCHS=1024
+    set EPOCHS=256
     set LEARNING_RATE=1e-3
 ) else if /i "%DATASET%"=="PTC" (
     set DIM=2
     set K=2
     set DROP=1
-    set EPOCHS=1024
+    set EPOCHS=256
     set LEARNING_RATE=1e-3
 ) else if /i "%DATASET%"=="DD" (
-    set DIM=150
+    set DIM=2
     set K=2
     set DROP=1
-    set EPOCHS=1024
+    set EPOCHS=256
     set LEARNING_RATE=1e-3
 ) else if /i "%DATASET%"=="NCI1" (
     set DIM=2
     set K=2
     set DROP=1
-    set EPOCHS=1024
+    set EPOCHS=256
     set LEARNING_RATE=1e-3
 ) else (
     echo Error: Unknown dataset '%DATASET%'

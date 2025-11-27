@@ -299,7 +299,7 @@ def directed_evolution(cost_function, matrix, L, K, population_size=100, generat
 def generate_wavelet_basis(matrix, L, K, method, epochs=1024, learning_rate=1e-3):
     wavelet_indices, rest_indices = None, None
     if method == 'evolutionary_algorithm':
-        wavelet_indices, rest_indices, _, _, _, _ = evolutionary_algorithm(get_cost, matrix, L = L, K = K, population_size = 100, generations = 40, mutation_rate = 0.2)
+        wavelet_indices, rest_indices, _, _, _, _ = evolutionary_algorithm(get_cost, matrix, L = L, K = K, population_size = 20, generations = 40, mutation_rate = 0.2)
     elif method == 'directed_evolution':
         wavelet_indices, rest_indices, _, _, _, _ = directed_evolution(get_cost, matrix, L = L, K = K, population_size = 10, generations = 40, sample_kept_rate = 0.3)
     dim = matrix.size(0) - L

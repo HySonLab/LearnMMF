@@ -62,7 +62,7 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     start = time.time()
     wavelet_indices, rest_indices, ea_cost, ea_min_cost_per_gen, ea_mean_cost_per_gen, ea_all_time_min_cost_per_gen = evolutionary_algorithm(
         get_cost, karate_laplacian, L=26, K=8, 
-        population_size=100, generations=100, mutation_rate=0.2
+        population_size=20, generations=100, mutation_rate=0.2
     )
     results['ea_all_time_min'] = ea_all_time_min_cost_per_gen
     timings['ea_time'] = time.time() - start
