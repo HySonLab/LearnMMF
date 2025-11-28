@@ -56,6 +56,7 @@ def get_cost(matrix, indices, rest, L, K, device='cpu'):
         
     # The current matrix
     A = torch.Tensor(matrix.data)
+    # print('Initial A:', A.dtype)
     wavelet_indices = indices.unsqueeze(-1).tolist()
     rest_indices = rest.tolist()
 
@@ -74,6 +75,7 @@ def get_cost(matrix, indices, rest, L, K, device='cpu'):
 
         # Eigen-decomposition
         A_part = torch.matmul(A[index == 1], torch.transpose(A[index == 1], 0, 1).contiguous())
+        # print('A_part shape:', A_part.shape)
         values, vectors = torch.eig(torch.reshape(A_part, (K, K)), True)
 
         # Rotation matrix
@@ -93,6 +95,7 @@ def get_cost(matrix, indices, rest, L, K, device='cpu'):
 
         # Drop the wavelet
         active_index[wavelet_indices[l]] = 0
+        # print(f'Iteration {l+1}: A = {A}')
 
     # Block diagonal left
     left_index = torch.outer(active_index, active_index).to(device = device)
@@ -241,7 +244,83 @@ def get_cost_numpy_mixed_precision(matrix, indices, rest, L, K, device='cpu'):
         A_rows = A[mask_idx, :]
         A_part = A_rows @ A_rows.T
         
-        values, vectors = np.linalg.eigh(A_part)
+        values, vectors = np.linalg.eig(A_part)
+        
+        U[:] = eye_N
+        U[np.ix_(mask_idx, mask_idx)] = vectors.T
+        
+        right = U @ right
+        temp = U @ A
+        A = temp @ U.T
+        
+        active_index[wavelet_indices[l]] = False
+
+        # print(f'Iteration {l+1}: A = {A}')
+    
+    active_mask = active_index[:, None] & active_index[None, :]
+    left_index = eye_N.copy()
+    left_index[active_mask] = 1.0
+    
+    D = A * left_index
+    temp = right.T @ D
+    A_rec = temp @ right
+    
+    # Convert back to float64 for final computation
+    A_rec_f64 = A_rec.astype(np.float64)
+    diff = matrix_np_f64 - A_rec_f64
+    return np.sqrt(np.sum(diff * diff))
+
+def get_cost_numpy_float32(matrix, indices, rest, L, K, device='cpu'):
+    """
+    Float32 (single precision) version.
+    Faster but less accurate - good for large matrices.
+    
+    Expected speedup: 1.5-2.5x on modern CPUs
+    Accuracy: Usually within 1e-4 to 1e-6 relative error
+    """
+    N = matrix.size(0) if isinstance(matrix, torch.Tensor) else matrix.shape[0]
+    
+    # Convert to numpy with explicit float32
+    if isinstance(matrix, torch.Tensor):
+        matrix_np = matrix.cpu().numpy().astype(np.float32)
+    else:
+        matrix_np = np.asarray(matrix, dtype=np.float32)
+    
+    # Pre-convert indices
+    if isinstance(indices, torch.Tensor):
+        if indices.dim() == 0:
+            wavelet_indices = [indices.item()]
+        else:
+            wavelet_indices = indices.squeeze().tolist() if indices.dim() > 1 else indices.tolist()
+    else:
+        wavelet_indices = indices if isinstance(indices, list) else [indices]
+    
+    if isinstance(rest, torch.Tensor):
+        rest_indices = rest.tolist()
+    else:
+        rest_indices = rest
+    
+    # Pre-allocate with float32
+    A = matrix_np.copy()
+    eye_N = np.eye(N, dtype=np.float32)
+    right = eye_N.copy()
+    U = np.empty((N, N), dtype=np.float32)
+    active_index = np.ones(N, dtype=bool)
+    mask = np.zeros(N, dtype=bool)
+    
+    for l in range(L):
+        mask.fill(False)
+        current_indices = [wavelet_indices[l]] + rest_indices[l]
+        mask[current_indices] = True
+        
+        mask_idx = np.nonzero(mask)[0]
+        
+        # Gram matrix computation
+        A_rows = A[mask_idx, :]
+        A_part = A_rows @ A_rows.T
+        
+        # Eigendecomposition
+        values, vectors = np.linalg.eig(A_part)
         
         U[:] = eye_N
         U[np.ix_(mask_idx, mask_idx)] = vectors.T
@@ -260,11 +339,8 @@ def get_cost_numpy_mixed_precision(matrix, indices, rest, L, K, device='cpu'):
     temp = right.T @ D
     A_rec = temp @ right
     
-    # Convert back to float64 for final computation
-    A_rec_f64 = A_rec.astype(np.float64)
-    diff = matrix_np_f64 - A_rec_f64
-    return np.sqrt(np.sum(diff * diff))
-
+    diff = matrix_np - A_rec
+    return float(np.sqrt(np.sum(diff * diff)))
 
 def crossover(parent1, parent2):
     parents = [parent1.clone().tolist(), parent2.clone().tolist()]
