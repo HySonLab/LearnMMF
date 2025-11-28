@@ -224,7 +224,9 @@ python %PROGRAM%.py ^
     --method=ea ^
     --epochs=%EPOCHS% ^
     --learning_rate=%LEARNING_RATE% ^
-    --seed=42
+    --seed=42 ^
+    --start_idx 0 ^
+    --end_idx 950
 
 call :log_completion "Evolutionary Algorithm MMF"
 goto end

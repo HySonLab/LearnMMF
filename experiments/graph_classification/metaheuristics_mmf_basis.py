@@ -1,12 +1,14 @@
 """
-Metaheuristics MMF Basis - Graph Wavelet Basis Generation
+Metaheuristics MMF Basis - Graph Wavelet Basis Generation (Incremental Saving)
 
 This script generates wavelet bases for molecular graphs using metaheuristic
-optimization methods (Evolutionary Algorithm or Directed Evolution).
+optimization methods with incremental saving after each molecule.
 
 Features:
 - Sort molecules by size for efficient batch processing
 - Process specific ranges of molecules
+- Incremental saving (saves after each molecule to prevent data loss)
+- Resume capability (skips already processed molecules)
 - Parallel-friendly design for distributed computation
 
 Author: Khang Nguyen
@@ -19,6 +21,7 @@ import os
 from tqdm import tqdm
 from pathlib import Path
 import json
+import glob
 
 # Add source directory to path
 import sys
@@ -30,7 +33,7 @@ from Dataset import Dataset
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description='Generate metaheuristic MMF wavelet basis'
+        description='Generate metaheuristic MMF wavelet basis (incremental saving)'
     )
     
     # I/O arguments
@@ -48,8 +51,10 @@ def parse_args():
                         help='Start index for processing range (inclusive, after sorting)')
     parser.add_argument('--end_idx', type=int, default=None,
                         help='End index for processing range (exclusive, after sorting)')
-    parser.add_argument('--sort_by_size', action='store_true', default=True,
+    parser.add_argument('--sort_by_size', action='store_true',
                         help='Sort molecules by size (number of atoms) before processing')
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume from existing progress (skip already processed molecules)')
     
     # Model hyperparameters
     parser.add_argument('--K', type=int, default=2,
@@ -150,6 +155,57 @@ def sort_molecules_by_size(data):
     return sorted_indices, sizes_sorted
 
 
+def get_processed_molecules(output_base):
+    """
+    Find which molecules have already been processed.
+    
+    Args:
+        output_base: Base path for output files
+        
+    Returns:
+        Set of processed molecule indices
+    """
+    pattern = f"{output_base}.mol_*.pt"
+    processed_files = glob.glob(pattern)
+    
+    processed_indices = set()
+    for filepath in processed_files:
+        # Extract index from filename like "output.mol_00042.pt"
+        filename = Path(filepath).name
+        try:
+            idx_str = filename.split('mol_')[1].split('.pt')[0]
+            idx = int(idx_str)
+            processed_indices.add(idx)
+        except (IndexError, ValueError):
+            continue
+    
+    return processed_indices
+
+
+def save_single_result(output_base, original_idx, adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets):
+    """
+    Save results for a single molecule incrementally.
+    
+    Args:
+        output_base: Base path for output files
+        original_idx: Original index of the molecule
+        adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets: Results to save
+    """
+    result = {
+        'index': original_idx,
+        'adj': adj,
+        'laplacian': laplacian,
+        'mother_coeffs': m_coeffs,
+        'father_coeffs': f_coeffs,
+        'mother_wavelets': m_wavelets,
+        'father_wavelets': f_wavelets
+    }
+    
+    # Save to individual file
+    single_file = f"{output_base}.mol_{original_idx:05d}.pt"
+    torch.save(result, single_file)
+
+
 def process_single_molecule(sample_idx, molecule, K, dim, method, epochs, learning_rate):
     """
     Process a single molecule to compute wavelet basis using metaheuristics.
@@ -168,7 +224,6 @@ def process_single_molecule(sample_idx, molecule, K, dim, method, epochs, learni
                          mother_wavelets, father_wavelets)
     """
     N = molecule.nAtoms
-    print(f"Processing molecule {sample_idx} with {N} atoms")
     
     # Skip molecules that are too large
     if N > 512:
@@ -264,7 +319,7 @@ def main():
     
     # Setup logging
     log_path = output_dir / f"{args.name}.log"
-    log_file = open(log_path, "w")
+    log_file = open(log_path, "a" if args.resume else "w")  # Append if resuming
     
     def log(message):
         """Helper function to log messages."""
@@ -283,6 +338,8 @@ def main():
     
     # Log configuration
     log("=" * 70)
+    if args.resume:
+        log("RESUMING EXPERIMENT")
     log(f"Experiment: {args.name}")
     log(f"Dataset: {args.dataset}")
     log(f"Output directory: {args.dir}")
@@ -291,6 +348,7 @@ def main():
     log(f"Hyperparameters: K={args.K}, dim={args.dim}")
     log(f"Optimization: epochs={args.epochs}, learning_rate={args.learning_rate}")
     log(f"Random seed: {args.seed}")
+    log(f"Incremental saving: ENABLED")
     log("-" * 70)
     
     # Load dataset
@@ -340,58 +398,59 @@ def main():
         size_range_start = size_info[start_idx][1]
         size_range_end = size_info[end_idx-1][1] if end_idx > 0 else size_range_start
         log(f"Size range: {size_range_start} to {size_range_end} atoms")
+    
+    # Check for already processed molecules if resuming
+    output_base = output_dir / args.name
+    processed_molecules = set()
+    
+    if args.resume:
+        log("Checking for already processed molecules...")
+        processed_molecules = get_processed_molecules(output_base)
+        log(f"Found {len(processed_molecules)} already processed molecules")
+        
+        # Filter out already processed
+        remaining_indices = [idx for idx in processing_indices if idx not in processed_molecules]
+        log(f"Remaining to process: {len(remaining_indices)} molecules")
+        processing_indices = remaining_indices
+        num_to_process = len(processing_indices)
+    
     log("-" * 70)
     
-    # Initialize result containers
-    adjs = [None] * num_molecules  # Full-size arrays to maintain indices
-    laplacians = [None] * num_molecules
-    mother_coeffs = [None] * num_molecules
-    father_coeffs = [None] * num_molecules
-    mother_wavelets = [None] * num_molecules
-    father_wavelets = [None] * num_molecules
-    
-    # Process molecules sequentially
+    # Process molecules sequentially with incremental saving
     log(f"Processing {num_to_process} molecules...")
+    log("Saving after each molecule (incremental mode)")
     log("-" * 70)
     
     successful_count = 0
     skipped_count = 0
     
     for original_idx in tqdm(processing_indices, desc="Processing molecules", unit="mol"):
+        molecule_size = data.molecules[original_idx].nAtoms
+        log(f"Processing molecule {original_idx} ({molecule_size} atoms)...")
+        
         adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets = process_single_molecule(
             original_idx, data.molecules[original_idx], 
             args.K, args.dim, args.method, args.epochs, args.learning_rate
         )
         
-        # Store at original index position
-        adjs[original_idx] = adj
-        laplacians[original_idx] = laplacian
-        mother_coeffs[original_idx] = m_coeffs
-        father_coeffs[original_idx] = f_coeffs
-        mother_wavelets[original_idx] = m_wavelets
-        father_wavelets[original_idx] = f_wavelets
+        # Save immediately after processing
+        save_single_result(output_base, original_idx, adj, laplacian, 
+                          m_coeffs, f_coeffs, m_wavelets, f_wavelets)
         
         # Count successful vs skipped
         if m_coeffs is not None and f_coeffs is not None:
             successful_count += 1
+            log(f"✓ Molecule {original_idx} completed successfully")
         else:
             skipped_count += 1
+            log(f"✗ Molecule {original_idx} skipped")
     
     log("-" * 70)
     log(f"Processing complete: {successful_count} successful, {skipped_count} skipped")
     
-    # Save results
-    log("Saving results...")
-    output_base = output_dir / args.name
-    
-    torch.save(adjs, f"{output_base}.adjs.pt")
-    torch.save(laplacians, f"{output_base}.laplacians.pt")
-    torch.save(mother_coeffs, f"{output_base}.mother_coeffs.pt")
-    torch.save(father_coeffs, f"{output_base}.father_coeffs.pt")
-    torch.save(mother_wavelets, f"{output_base}.mother_wavelets.pt")
-    torch.save(father_wavelets, f"{output_base}.father_wavelets.pt")
-    
     # Save metadata
+    log("Saving metadata...")
+    
     metadata = {
         'dataset': args.dataset,
         'method': args.method,
@@ -406,17 +465,22 @@ def main():
         'successful_count': successful_count,
         'skipped_count': skipped_count,
         'sorted_by_size': args.sort_by_size,
-        'processed_indices': processing_indices
+        'incremental_saving': True,
+        'resumed': args.resume
     }
     
     metadata_path = output_dir / f"{args.name}.metadata.json"
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    log(f"Results saved to: {output_base}.*")
     log(f"Metadata saved to: {metadata_path}")
+    log(f"Individual molecule files saved to: {output_base}.mol_*.pt")
     log("=" * 70)
     log("Done!")
+    log("")
+    log("To consolidate individual files into single arrays, run:")
+    log(f"  python consolidate_incremental_results.py --input_dir {output_dir} --name {args.name}")
+    log("=" * 70)
     
     log_file.close()
 
