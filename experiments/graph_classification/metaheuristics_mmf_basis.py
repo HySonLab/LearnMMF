@@ -4,6 +4,11 @@ Metaheuristics MMF Basis - Graph Wavelet Basis Generation
 This script generates wavelet bases for molecular graphs using metaheuristic
 optimization methods (Evolutionary Algorithm or Directed Evolution).
 
+Features:
+- Sort molecules by size for efficient batch processing
+- Process specific ranges of molecules
+- Parallel-friendly design for distributed computation
+
 Author: Khang Nguyen
 """
 
@@ -13,6 +18,7 @@ import numpy as np
 import os
 from tqdm import tqdm
 from pathlib import Path
+import json
 
 # Add source directory to path
 import sys
@@ -36,6 +42,14 @@ def parse_args():
                         help='Graph kernel benchmark dataset')
     parser.add_argument('--data_folder', type=str, default='../../data/',
                         help='Data folder path')
+    
+    # Processing range arguments
+    parser.add_argument('--start_idx', type=int, default=None,
+                        help='Start index for processing range (inclusive, after sorting)')
+    parser.add_argument('--end_idx', type=int, default=None,
+                        help='End index for processing range (exclusive, after sorting)')
+    parser.add_argument('--sort_by_size', action='store_true', default=True,
+                        help='Sort molecules by size (number of atoms) before processing')
     
     # Model hyperparameters
     parser.add_argument('--K', type=int, default=2,
@@ -100,6 +114,42 @@ def compute_normalized_laplacian(adj_matrix):
     return laplacian_norm
 
 
+def get_molecule_sizes(data):
+    """
+    Get the size (number of atoms) of each molecule.
+    
+    Args:
+        data: Dataset object
+        
+    Returns:
+        List of tuples (original_index, size)
+    """
+    sizes = []
+    for idx, molecule in enumerate(data.molecules):
+        sizes.append((idx, molecule.nAtoms))
+    return sizes
+
+
+def sort_molecules_by_size(data):
+    """
+    Sort molecules by size and return mapping.
+    
+    Args:
+        data: Dataset object
+        
+    Returns:
+        Tuple of (sorted_indices, size_info)
+        - sorted_indices: List of original indices in sorted order
+        - size_info: List of (original_idx, size) tuples in sorted order
+    """
+    sizes = get_molecule_sizes(data)
+    # Sort by size (ascending order - small to large)
+    sizes_sorted = sorted(sizes, key=lambda x: x[1])
+    sorted_indices = [idx for idx, _ in sizes_sorted]
+    
+    return sorted_indices, sizes_sorted
+
+
 def process_single_molecule(sample_idx, molecule, K, dim, method, epochs, learning_rate):
     """
     Process a single molecule to compute wavelet basis using metaheuristics.
@@ -118,6 +168,7 @@ def process_single_molecule(sample_idx, molecule, K, dim, method, epochs, learni
                          mother_wavelets, father_wavelets)
     """
     N = molecule.nAtoms
+    print(f"Processing molecule {sample_idx} with {N} atoms")
     
     # Skip molecules that are too large
     if N > 512:
@@ -231,6 +282,7 @@ def main():
     }.get(args.method, args.method)
     
     # Log configuration
+    log("=" * 70)
     log(f"Experiment: {args.name}")
     log(f"Dataset: {args.dataset}")
     log(f"Output directory: {args.dir}")
@@ -239,41 +291,85 @@ def main():
     log(f"Hyperparameters: K={args.K}, dim={args.dim}")
     log(f"Optimization: epochs={args.epochs}, learning_rate={args.learning_rate}")
     log(f"Random seed: {args.seed}")
-    log("-" * 60)
+    log("-" * 70)
     
     # Load dataset
     log("Loading dataset...")
     data = load_dataset(args.data_folder, args.dataset)
     num_molecules = data.nMolecules
     log(f"Loaded {num_molecules} molecules")
-    log("-" * 60)
+    
+    # Sort molecules by size if requested
+    if args.sort_by_size:
+        log("Sorting molecules by size...")
+        sorted_indices, size_info = sort_molecules_by_size(data)
+        log(f"Molecules sorted (size range: {size_info[0][1]} to {size_info[-1][1]} atoms)")
+        
+        # Save sorting information
+        sorting_info = {
+            'sorted_indices': sorted_indices,
+            'sizes': [(idx, size) for idx, size in size_info]
+        }
+        sorting_path = output_dir / f"{args.dataset}_sorting_info.json"
+        with open(sorting_path, 'w') as f:
+            json.dump(sorting_info, f, indent=2)
+        log(f"Sorting info saved to: {sorting_path}")
+    else:
+        sorted_indices = list(range(num_molecules))
+        size_info = get_molecule_sizes(data)
+        log("Processing molecules in original order")
+    
+    # Determine processing range
+    start_idx = args.start_idx if args.start_idx is not None else 0
+    end_idx = args.end_idx if args.end_idx is not None else num_molecules
+    
+    # Validate range
+    start_idx = max(0, start_idx)
+    end_idx = min(num_molecules, end_idx)
+    
+    if start_idx >= end_idx:
+        log(f"ERROR: Invalid range [{start_idx}, {end_idx})")
+        log_file.close()
+        return
+    
+    processing_indices = sorted_indices[start_idx:end_idx]
+    num_to_process = len(processing_indices)
+    
+    log(f"Processing range: [{start_idx}, {end_idx}) = {num_to_process} molecules")
+    if args.sort_by_size:
+        size_range_start = size_info[start_idx][1]
+        size_range_end = size_info[end_idx-1][1] if end_idx > 0 else size_range_start
+        log(f"Size range: {size_range_start} to {size_range_end} atoms")
+    log("-" * 70)
     
     # Initialize result containers
-    adjs = []
-    laplacians = []
-    mother_coeffs = []
-    father_coeffs = []
-    mother_wavelets = []
-    father_wavelets = []
+    adjs = [None] * num_molecules  # Full-size arrays to maintain indices
+    laplacians = [None] * num_molecules
+    mother_coeffs = [None] * num_molecules
+    father_coeffs = [None] * num_molecules
+    mother_wavelets = [None] * num_molecules
+    father_wavelets = [None] * num_molecules
     
     # Process molecules sequentially
-    log(f"Processing {num_molecules} molecules...")
-    log("-" * 60)
+    log(f"Processing {num_to_process} molecules...")
+    log("-" * 70)
     
     successful_count = 0
     skipped_count = 0
     
-    for idx in tqdm(range(num_molecules), desc="Processing molecules", unit="mol"):
+    for original_idx in tqdm(processing_indices, desc="Processing molecules", unit="mol"):
         adj, laplacian, m_coeffs, f_coeffs, m_wavelets, f_wavelets = process_single_molecule(
-            idx, data.molecules[idx], args.K, args.dim, args.method, args.epochs, args.learning_rate
+            original_idx, data.molecules[original_idx], 
+            args.K, args.dim, args.method, args.epochs, args.learning_rate
         )
         
-        adjs.append(adj)
-        laplacians.append(laplacian)
-        mother_coeffs.append(m_coeffs)
-        father_coeffs.append(f_coeffs)
-        mother_wavelets.append(m_wavelets)
-        father_wavelets.append(f_wavelets)
+        # Store at original index position
+        adjs[original_idx] = adj
+        laplacians[original_idx] = laplacian
+        mother_coeffs[original_idx] = m_coeffs
+        father_coeffs[original_idx] = f_coeffs
+        mother_wavelets[original_idx] = m_wavelets
+        father_wavelets[original_idx] = f_wavelets
         
         # Count successful vs skipped
         if m_coeffs is not None and f_coeffs is not None:
@@ -281,16 +377,8 @@ def main():
         else:
             skipped_count += 1
     
-    log("-" * 60)
+    log("-" * 70)
     log(f"Processing complete: {successful_count} successful, {skipped_count} skipped")
-    
-    # Verify data integrity
-    assert len(adjs) == num_molecules
-    assert len(laplacians) == num_molecules
-    assert len(mother_coeffs) == num_molecules
-    assert len(father_coeffs) == num_molecules
-    assert len(mother_wavelets) == num_molecules
-    assert len(father_wavelets) == num_molecules
     
     # Save results
     log("Saving results...")
@@ -303,8 +391,31 @@ def main():
     torch.save(mother_wavelets, f"{output_base}.mother_wavelets.pt")
     torch.save(father_wavelets, f"{output_base}.father_wavelets.pt")
     
+    # Save metadata
+    metadata = {
+        'dataset': args.dataset,
+        'method': args.method,
+        'K': args.K,
+        'dim': args.dim,
+        'epochs': args.epochs,
+        'learning_rate': args.learning_rate,
+        'seed': args.seed,
+        'total_molecules': num_molecules,
+        'processed_range': [start_idx, end_idx],
+        'processed_count': num_to_process,
+        'successful_count': successful_count,
+        'skipped_count': skipped_count,
+        'sorted_by_size': args.sort_by_size,
+        'processed_indices': processing_indices
+    }
+    
+    metadata_path = output_dir / f"{args.name}.metadata.json"
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
     log(f"Results saved to: {output_base}.*")
-    log("=" * 60)
+    log(f"Metadata saved to: {metadata_path}")
+    log("=" * 70)
     log("Done!")
     
     log_file.close()
