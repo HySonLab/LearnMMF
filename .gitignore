@@ -1,2 +1,11 @@
 **/__pycache__
 lightning_logs
+
+experiments/graph_classification/baseline
+experiments/graph_classification/directed_evolution
+experiments/graph_classification/evolutionary_algorithm
+experiments/graph_classification/k_neighbours
+experiments/graph_classification/random
+experiments/graph_classification/train_wavelet_network
+experiments/graph_classification/statistics
+experiments/graph_classification/timing_logs
