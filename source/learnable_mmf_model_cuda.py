@@ -1,0 +1,295 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.optim import Adam, Adagrad
+from torch import optim
+from torch.utils.data import DataLoader
+
+import numpy as np
+import argparse
+import os
+import time
+import matplotlib.pyplot as plt
+
+# +---------------------+
+# | Learnable MMF model |
+# +---------------------+
+
+class Learnable_MMF_CUDA(nn.Module):
+    def __init__(self, A, L, K, drop, dim, wavelet_indices, rest_indices, device='cuda'):
+        super(Learnable_MMF_CUDA, self).__init__()
+        
+        # Force CUDA device
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available! This version requires a CUDA-capable GPU.")
+        
+        self.device = torch.device('cuda')
+        
+        # Matrix - move to CUDA immediately
+        self.A = A.to(self.device)
+
+        # Size of the matrix
+        self.N = A.size(0)
+        assert A.dim() == 2
+        assert A.size(1) == self.N
+
+        # Number of resolutions
+        self.L = L
+
+        # Size of the Jacobian rotation matrix
+        self.K = K
+
+        # Number of rows/columns to drop in each iteration
+        self.drop = drop
+
+        # Number of left rows/columns at the end
+        self.dim = dim
+        assert self.dim == self.N - self.L * self.drop
+
+        # Given indices
+        self.wavelet_indices = wavelet_indices
+        self.rest_indices = rest_indices
+
+        active_index = torch.ones(self.N, device=self.device)
+        self.selected_indices = []
+
+        # Initialization of the Jacobi rotation matrix
+        self.all_O = torch.nn.ParameterList()
+        
+        # The current matrix - already on CUDA
+        A = torch.Tensor(self.A.data).to(self.device)
+
+        for l in range(self.L):
+            # Set the indices for this rotation
+            indices = self.wavelet_indices[l] + self.rest_indices[l]
+            indices.sort()
+            assert len(indices) == self.K
+            index = torch.zeros(self.N, device=self.device)
+            for k in range(self.K):
+                index[indices[k]] = 1
+            self.selected_indices.append(index)
+
+            # Outer product map
+            outer = torch.outer(index, index)
+
+            # Eigen-decomposition
+            A_part = torch.matmul(A[index == 1], torch.transpose(A[index == 1], 0, 1).contiguous())
+            values, vectors = torch.linalg.eig(torch.reshape(A_part, (self.K, self.K)))
+            
+            # Take real parts (for symmetric matrices, imaginary parts should be ~0)
+            vectors = torch.real(vectors)
+
+            # Rotation matrix - on CUDA
+            O = torch.nn.Parameter(vectors.transpose(0, 1).contiguous().data, requires_grad=True)
+            self.all_O.append(O)
+
+            # Full Jacobian rotation matrix
+            U = torch.eye(self.N, device=self.device)
+            U[outer == 1] = O.flatten()
+
+            if l == 0:
+                right = U
+            else:
+                right = torch.matmul(U, right)
+
+            # New A
+            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous())
+
+            # Drop the wavelet
+            active_index[self.wavelet_indices[l]] = 0
+
+        self.final_active_index = active_index
+
+        # Block diagonal left
+        left_index = torch.outer(active_index, active_index)
+        left_index = torch.eye(self.N, device=self.device) - torch.diag(torch.diag(left_index)) + left_index
+        D = A * left_index
+
+        # Reconstruction
+        A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
+
+        # print('Initialization loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
+
+    def forward(self):
+        # The current matrix - already on CUDA
+        A = self.A
+
+        # For each resolution
+        for l in range(self.L):
+            # Randomization of the indices
+            index = self.selected_indices[l]
+            
+            # Outer product map
+            outer = torch.outer(index, index)
+
+            # Jacobi rotation matrix - already on CUDA via ParameterList
+            O = self.all_O[l]
+
+            # Full Jacobian rotation matrix
+            U = torch.eye(self.N, device=self.device)
+            U[outer == 1] = O.flatten()
+
+            if l == 0:
+                right = U
+            else:
+                right = torch.matmul(U, right)
+
+            # New A
+            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous())
+
+        # Diagonal left
+        active_index = self.final_active_index
+        left_index = torch.outer(active_index, active_index)
+        left_index = torch.eye(self.N, device=self.device) - torch.diag(torch.diag(left_index)) + left_index
+        D = A * left_index
+
+        # Mother coefficients
+        outer = torch.outer(1 - active_index, 1 - active_index)
+        mother_coefficients = torch.reshape(D[outer == 1], (self.N - self.dim, self.N - self.dim))
+
+        # Father coefficients
+        outer = torch.outer(active_index, active_index)
+        father_coefficients = torch.reshape(D[outer == 1], (self.dim, self.dim))
+
+        # Mother wavelets
+        mother_wavelets = torch.reshape(right[active_index == 0], (self.N - self.dim, self.N))
+
+        # Father wavelets
+        father_wavelets = torch.reshape(right[active_index == 1], (self.dim, self.N))
+
+        # Reconstruction
+        A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
+
+        # Result
+        return A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets
+
+
+# +------------------------+
+# | Learnable MMF training |
+# +------------------------+
+
+# opt
+# 'original': The original SGD with Cayley transform, without any additional library
+# 'additional-sgd': SGD + momentum with Cayley transform, adopted from https://github.com/JunLi-Galios/Optimization-on-Stiefel-Manifold-via-Cayley-Transform
+# 'additional-adam': Adam optimizer with Cayley transform, adopted from https://github.com/JunLi-Galios/Optimization-on-Stiefel-Manifold-via-Cayley-Transform
+
+def learnable_mmf_train_cuda(A, L, K, drop, dim, wavelet_indices, rest_indices, epochs=10000, learning_rate=1e-4, early_stop=True, opt='original', momentum=0.9):
+    """
+    CUDA version of learnable MMF training.
+    
+    All computations are performed on CUDA.
+    Input A will be automatically moved to CUDA.
+    Output tensors will remain on CUDA.
+    """
+    # Check CUDA availability
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available! This version requires a CUDA-capable GPU.")
+    
+    device = torch.device('cuda')
+    
+    # Move input to CUDA if not already there
+    if not A.is_cuda:
+        A = A.to(device)
+    
+    # Create model (will be on CUDA)
+    model = Learnable_MMF_CUDA(A, L, K, drop, dim, wavelet_indices, rest_indices, device='cuda')
+    
+    if opt == 'original':
+        # Original SGD with Cayley transform
+        optimizer = Adagrad(model.parameters(), lr=learning_rate)
+    else:
+        # Use additional library
+        import stiefel_optimizer
+
+        # Create the list of trainable parameters
+        param_g = []
+        for l in range(L):
+            param_g.append(model.all_O[l])
+
+        # Create the dictionary of optimizer's hyperparameters
+        dict_g = {
+            'params': param_g, 
+            'lr': learning_rate, 
+            'momentum': momentum, 
+            'stiefel': True
+        }
+
+        # Create the optimizer
+        if opt == 'additional-sgd':
+            optimizer = stiefel_optimizer.SGDG([dict_g])
+        else:
+            optimizer = stiefel_optimizer.AdamG([dict_g])
+
+    # Training
+    best = 1e9
+    for epoch in range(epochs):
+        t = time.time()
+        optimizer.zero_grad()
+
+        A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = model()
+
+        loss = torch.norm(A - A_rec, p='fro')
+        loss.backward()
+
+        # if epoch % 1000 == 0:
+        #     print('---- Epoch', epoch, '----')
+        #     print('Loss =', loss.item())
+        #     print('Time =', time.time() - t)
+
+        if loss.item() < best:
+            best = loss.item()
+        else:
+            if early_stop:
+                print('Early stop at epoch', epoch)
+                break
+
+        # Update parameter
+        if epoch + 1 < epochs:
+            if opt == 'original':
+                # Without any additional library
+                for l in range(L):
+                    X = torch.Tensor(model.all_O[l].data).to(device)
+                    G = torch.Tensor(model.all_O[l].grad.data).to(device)
+                    Z = torch.matmul(G, X.transpose(0, 1).contiguous()) - torch.matmul(X, G.transpose(0, 1).contiguous())
+                    tau = learning_rate
+                    
+                    # Create identity on CUDA
+                    eye_K = torch.eye(K, device=device)
+                    
+                    Y = torch.matmul(
+                        torch.matmul(
+                            torch.inverse(eye_K + tau / 2 * Z), 
+                            eye_K - tau / 2 * Z
+                        ), 
+                        X
+                    )
+                    model.all_O[l].data = Y.data
+            else:
+                # Use the optimizer from the additional library
+                optimizer.step()
+
+    # Return the result - all tensors remain on CUDA
+    A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = model()
+
+    loss = torch.norm(A - A_rec, p='fro')
+    # print('---- Final loss ----')
+    # print('Loss =', loss.item())
+
+    return A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets
+
+
+# Backward compatibility wrapper - automatically uses CUDA
+def learnable_mmf_train_auto(A, L, K, drop, dim, wavelet_indices, rest_indices, epochs=10000, learning_rate=1e-4, early_stop=True, opt='original', momentum=0.9, force_cuda=True):
+    """
+    Wrapper that automatically uses CUDA if available and force_cuda=True.
+    
+    Args:
+        force_cuda: If True and CUDA available, use CUDA version
+                   If False or CUDA unavailable, use CPU version (need to import original)
+    """
+    if force_cuda and torch.cuda.is_available():
+        return learnable_mmf_train_cuda(A, L, K, drop, dim, wavelet_indices, rest_indices, 
+                                       epochs, learning_rate, early_stop, opt, momentum)
+    else:
+        # Fall back to CPU version (need to import from original module)
+        raise NotImplementedError("CPU fallback not implemented in this module. Use force_cuda=True or import original module.")
