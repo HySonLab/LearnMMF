@@ -440,10 +440,10 @@ def main():
         # Count successful vs skipped
         if m_coeffs is not None and f_coeffs is not None:
             successful_count += 1
-            log(f"✓ Molecule {original_idx} completed successfully")
+            log(f"Molecule {original_idx} completed successfully")
         else:
             skipped_count += 1
-            log(f"✗ Molecule {original_idx} skipped")
+            log(f"Molecule {original_idx} skipped")
     
     log("-" * 70)
     log(f"Processing complete: {successful_count} successful, {skipped_count} skipped")
