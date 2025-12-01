@@ -69,28 +69,28 @@ case "${DATASET^^}" in
         DIM=2
         K=2
         DROP=1
-        EPOCHS=1024
+        EPOCHS=100
         LEARNING_RATE=1e-3
         ;;
     PTC)
         DIM=2
         K=2
         DROP=1
-        EPOCHS=1024
+        EPOCHS=100
         LEARNING_RATE=1e-3
         ;;
     DD)
         DIM=2
         K=2
         DROP=1
-        EPOCHS=1024
+        EPOCHS=100
         LEARNING_RATE=1e-3
         ;;
     NCI1)
         DIM=2
         K=2
         DROP=1
-        EPOCHS=1024
+        EPOCHS=100
         LEARNING_RATE=1e-3
         ;;
     *)
