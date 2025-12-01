@@ -74,7 +74,7 @@ father_coeffs = []
 mother_wavelets = []
 father_wavelets = []
 
-for sample in range(num_data):
+for sample in tqdm(range(num_data)):
     molecule = data.molecules[sample]
     N = molecule.nAtoms
     
