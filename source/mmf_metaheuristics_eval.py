@@ -8,7 +8,7 @@ from heuristics import *
 from data_loader import *
 from learnable_mmf_model import *
 from baseline_mmf_model import Baseline_MMF
-from metaheuristics import evolutionary_algorithm, get_cost, directed_evolution
+from metaheuristics import evolutionary_algorithm, get_cost_numpy_float32, directed_evolution
 
 def set_seed(seed):
     """Set all random seeds for reproducibility"""
@@ -61,8 +61,8 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     # Learnable MMF (EA to select indices)
     start = time.time()
     wavelet_indices, rest_indices, ea_cost, ea_min_cost_per_gen, ea_mean_cost_per_gen, ea_all_time_min_cost_per_gen = evolutionary_algorithm(
-        get_cost, karate_laplacian, L=26, K=8, 
-        population_size=20, generations=100, mutation_rate=0.2
+        get_cost_numpy_float32, karate_laplacian, L=26, K=8, 
+        population_size=50, generations=100, mutation_rate=0.2
     )
     results['ea_all_time_min'] = ea_all_time_min_cost_per_gen
     timings['ea_time'] = time.time() - start
@@ -70,8 +70,8 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     # Learnable MMF (DE to select indices)
     start = time.time()
     wavelet_indices, rest_indices, de_cost, de_min_cost_per_gen, de_mean_cost_per_gen, de_all_time_min_cost_per_gen = directed_evolution(
-        get_cost, karate_laplacian, L=26, K=8, 
-        population_size=10, generations=100, sample_kept_rate=0.3
+        get_cost_numpy_float32, karate_laplacian, L=26, K=8, 
+        population_size=50, generations=100, sample_kept_rate=0.3
     )
     results['de_all_time_min'] = de_all_time_min_cost_per_gen
     timings['de_time'] = time.time() - start
