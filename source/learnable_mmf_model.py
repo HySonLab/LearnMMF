@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import argparse
 import os
+from tqdm import tqdm
 import time
 
 # +---------------------+
@@ -54,8 +55,9 @@ class Learnable_MMF(nn.Module):
         
         # The current matrix
         A = torch.Tensor(self.A.data)
+        print('Initializing Learnable MMF...')
 
-        for l in range(self.L):
+        for l in tqdm(range(self.L)):
             # Set the indices for this rotation
             indices = self.wavelet_indices[l] + self.rest_indices[l]
             indices.sort()
@@ -83,10 +85,10 @@ class Learnable_MMF(nn.Module):
             if l == 0:
                 right = U
             else:
-                right = torch.matmul(U, right)
+                right = torch.matmul(U, right) # This is accumulating the gradients which create OOM error when N is large
 
             # New A
-            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous())
+            A = torch.matmul(torch.matmul(U, A), U.transpose(0, 1).contiguous()) # This is accumulating the gradients which create OOM error when N is large
 
             # Drop the wavelet
             active_index[self.wavelet_indices[l]] = 0
@@ -106,9 +108,10 @@ class Learnable_MMF(nn.Module):
     def forward(self):
         # The current matrix
         A = self.A
+        print('Running Learnable MMF...')
 
         # For each resolution
-        for l in range(self.L):
+        for l in tqdm(range(self.L)):
             # Randomization of the indices
             index = self.selected_indices[l]
             
@@ -197,7 +200,8 @@ def learnable_mmf_train(A, L, K, drop, dim, wavelet_indices, rest_indices, epoch
 
     # Training
     best = 1e9
-    for epoch in range(epochs):
+    print('Training Learnable MMF...')
+    for epoch in tqdm(range(epochs)):
         t = time.time()
         optimizer.zero_grad()
 
@@ -205,11 +209,6 @@ def learnable_mmf_train(A, L, K, drop, dim, wavelet_indices, rest_indices, epoch
 
         loss = torch.norm(A - A_rec, p = 'fro')
         loss.backward()
-
-        # if epoch % 1000 == 0:
-        #     print('---- Epoch', epoch, '----')
-        #     print('Loss =', loss.item())
-        #     print('Time =', time.time() - t)
 
         if loss.item() < best:
             best = loss.item()

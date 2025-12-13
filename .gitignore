@@ -9,3 +9,5 @@ experiments/graph_classification/random
 experiments/graph_classification/train_wavelet_network
 experiments/graph_classification/statistics
 experiments/graph_classification/timing_logs
+
+source/output*

@@ -277,7 +277,7 @@ def evolutionary_algorithm(cost_function, matrix, L, K, population_size=1000, ge
                 assert len(offspring_population[i].tolist()) == len(set(offspring_population[i].tolist()))
 
         end_time = time.time()
-        print(f"Generation {gen}: time = {end_time - start_time:.4f} seconds")  
+        print(f"Generation {gen}: time = {end_time - start_time:.4f} seconds. The best cost so far = {all_time_min_cost:.6f}")  
 
         population = torch.stack(offspring_population)
     

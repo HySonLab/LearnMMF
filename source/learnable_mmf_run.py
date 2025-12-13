@@ -35,7 +35,7 @@ def _parse_args():
     parser.add_argument('--epochs', '-epochs', type = int, default = 128, help = 'Number of epochs')
     parser.add_argument('--learning_rate', '-learning_rate', type = float, default = 1e-4, help = 'Learning rate')
     parser.add_argument('--seed', '-s', type = int, default = 123456789, help = 'Random seed')
-    parser.add_argument('--visual', '-v', type = int, default = 0, help = 'Visualization or not')
+    parser.add_argument('--visual', '-v', type = int, default = 1, help = 'Visualization or not')
     parser.add_argument('--heuristics', '-heuristics', type = str, default = 'smart', help = 'Heuristics to find indices')
     parser.add_argument('--device', '-device', type = str, default = 'cpu', help = 'cuda/cpu')
     args = parser.parse_args()
@@ -151,6 +151,9 @@ print('Save model to file')
 
 # Testing
 A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = model()
+    # Save the wavelets to file
+torch.save(mother_wavelets.detach(), args.name + '.mother_wavelets.pt')
+torch.save(father_wavelets.detach(), args.name + '.father_wavelets.pt')
 
 # Plot the Frobenius norm after each rotation matrix
 diff_rec = torch.abs(A - A_rec)
