@@ -84,6 +84,13 @@ def parse_arguments():
                         help='Save MMF model')
     parser.add_argument('--load-mmf', type=str, default=None,
                         help='Load pretrained MMF model from path')
+    parser.add_argument('--save-wavelets', action='store_true',
+                        help='Save mother and father wavelets to files')
+    parser.add_argument('--load-wavelets', type=str, default=None,
+                        help='Load wavelets from folder (skips MMF training)')
+    parser.add_argument('--skip-mmf', action='store_true',
+                        help='Skip MMF training (requires --load-wavelets)')
+    
     
     # Device
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
@@ -289,7 +296,7 @@ class Wavelet_Network(nn.Module):
         # Concatenate all hidden states
         concat = torch.cat(all_hiddens, dim=2)  # (1, N, H*(num_layers+1))
         
-        # Output layers - PER NODE (not summed!)
+        # Output layers
         output_1 = torch.tanh(self.output_layer_1(concat))  # (1, N, H)
         logits = self.output_layer_2(output_1)  # (1, N, C)
         
@@ -404,128 +411,182 @@ def main():
     test_mask = test_mask.to(device)
     
     # ========================================
-    # STEP 1: Train MMF to get wavelet bases
+    # STEP 1: Get wavelet bases (train MMF or load from file)
     # ========================================
     
-    if args.load_mmf is not None:
-        log_print(f"Loading pretrained MMF from {args.load_mmf}...")
-        # Load would require implementing state dict loading
-        # For now, we'll train from scratch
-        log_print("Warning: MMF loading not implemented, training from scratch")
-    
-    log_print("\n" + "="*60)
-    log_print("STEP 1: Learning MMF Wavelet Bases")
-    log_print("="*60 + "\n")
-    
-    # Compute heuristics
-    log_print(f"Computing {args.heuristics} heuristics...")
-    A_sparse = L_norm.to_sparse()
-    
-    if args.heuristics == 'random':
-        wavelet_indices, rest_indices = heuristics_random(
-            A_sparse, args.L, args.K, args.drop, args.dim
-        )
+    # Check if we should load wavelets instead of training MMF
+    if args.load_wavelets is not None or args.skip_mmf:
+        if args.load_wavelets is None:
+            raise ValueError('--skip-mmf requires --load-wavelets to be specified')
+        
+        log_print('\n' + '='*60)
+        log_print('Loading Pre-computed Wavelets')
+        log_print('='*60 + '\n')
+        
+        # Load wavelets from files
+        mother_path = os.path.join(args.load_wavelets, 'mother_wavelets.pt')
+        father_path = os.path.join(args.load_wavelets, 'father_wavelets.pt')
+        
+        if not os.path.exists(mother_path) or not os.path.exists(father_path):
+            raise FileNotFoundError(
+                f'Wavelet files not found in {args.load_wavelets}\n'
+                f'Expected: mother_wavelets.pt and father_wavelets.pt'
+            )
+        
+        log_print(f'Loading mother wavelets from: {mother_path}')
+        log_print(f'Loading father wavelets from: {father_path}')
+        
+        mother_w = torch.load(mother_path, map_location=device)
+        father_w = torch.load(father_path, map_location=device)
+        
+        log_print(f'Loaded mother wavelets: {mother_w.shape}')
+        log_print(f'Loaded father wavelets: {father_w.shape}')
+        
+        # Compute sparsity for loaded wavelets
+        mother_elements = mother_w.numel()
+        mother_nonzero = (mother_w.abs() > 1e-6).sum().item()
+        mother_sparsity = 100 * (1 - mother_nonzero / mother_elements)
+        log_print(f'Mother wavelets: {mother_w.shape[0]} wavelets, {100 - mother_sparsity:.2f}% non-zero')
+        
+        father_elements = father_w.numel()
+        father_nonzero = (father_w.abs() > 1e-6).sum().item()
+        father_sparsity = 100 * (1 - father_nonzero / father_elements)
+        log_print(f'Father wavelets: {father_w.shape[0]} wavelets, {100 - father_sparsity:.2f}% non-zero')
+        
+        total_elements = mother_elements + father_elements
+        total_nonzero = mother_nonzero + father_nonzero
+        combined_sparsity = 100 * (1 - total_nonzero / total_elements)
+        log_print(f'Combined sparsity: {100 - combined_sparsity:.2f}% non-zero')
+        
     else:
-        if args.drop == 1:
-            wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(
+        # Train MMF to compute wavelets
+        log_print('\n' + '='*60)
+        log_print('STEP 1: Learning MMF Wavelet Bases')
+        log_print('='*60 + '\n')
+        
+        # Compute heuristics
+        log_print(f"Computing {args.heuristics} heuristics...")
+        A_sparse = L_norm.to_sparse()
+        
+        if args.heuristics == 'random':
+            wavelet_indices, rest_indices = heuristics_random(
                 A_sparse, args.L, args.K, args.drop, args.dim
             )
         else:
-            wavelet_indices, rest_indices = heuristics_k_neighbors_multiple_wavelets(
-                A_sparse, args.L, args.K, args.drop, args.dim
-            )
-    
-    # Create MMF model
-    log_print("Creating Learnable MMF model...")
-    mmf_model = Learnable_MMF(
-        L_norm, args.L, args.K, args.drop, args.dim,
-        wavelet_indices, rest_indices,
-        device=device
-    )
-    mmf_model = mmf_model.to(device)
-    
-    # Train MMF
-    log_print(f"\nTraining MMF for {args.mmf_epochs} epochs...")
-    mmf_optimizer = Adagrad(mmf_model.parameters(), lr=args.mmf_lr)
-    
-    all_losses = []
-    all_errors = []
-    norm = torch.norm(L_norm, p='fro')
-    best = 1e9
-    
-    for epoch in range(args.mmf_epochs):
-        t = time.time()
-        mmf_optimizer.zero_grad()
-        
-        A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model()
-        
-        loss = torch.norm(L_norm - A_rec, p='fro')
-        loss.backward()
-        
-        error = loss / norm
-        all_losses.append(loss.item())
-        all_errors.append(error.item())
-        
-        if epoch % 100 == 0 or epoch == args.mmf_epochs - 1:
-            log_print(f'Epoch {epoch:4d} | Loss: {loss.item():.6f} | '
-                     f'Error: {error.item():.6f} | Time: {time.time()-t:.2f}s')
-        
-        # Early stopping
-        if args.mmf_early_stop:
-            if loss.item() < best:
-                best = loss.item()
+            if args.drop == 1:
+                wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(
+                    A_sparse, args.L, args.K, args.drop, args.dim
+                )
             else:
-                log_print(f"Early stopping at epoch {epoch}")
-                break
+                wavelet_indices, rest_indices = heuristics_k_neighbors_multiple_wavelets(
+                    A_sparse, args.L, args.K, args.drop, args.dim
+                )
         
-        # Manual Cayley update
-        for l in range(args.L):
-            X = mmf_model.all_O[l].data.clone()
-            G = mmf_model.all_O[l].grad.data.clone()
-            Z = torch.matmul(G, X.transpose(0, 1)) - torch.matmul(X, G.transpose(0, 1))
-            tau = args.mmf_lr
-            Y = torch.matmul(
-                torch.matmul(
-                    torch.inverse(torch.eye(args.K, device=device) + tau / 2 * Z),
-                    torch.eye(args.K, device=device) - tau / 2 * Z
-                ),
-                X
-            )
-            mmf_model.all_O[l].data = Y.data
-    
-    # Get final wavelets
-    log_print("\nExtracting learned wavelets...")
-    with torch.no_grad():
-        A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model()
-    
-    # Compute sparsity for both mother and father wavelets
-    mother_elements = mother_w.numel()
-    mother_nonzero = (mother_w.abs() > 1e-6).sum().item()
-    mother_sparsity = 100 * (1 - mother_nonzero / mother_elements)
-    log_print(f"Mother wavelets: {mother_w.shape[0]} wavelets, {100 - mother_sparsity:.2f}% non-zero")
-    
-    father_elements = father_w.numel()
-    father_nonzero = (father_w.abs() > 1e-6).sum().item()
-    father_sparsity = 100 * (1 - father_nonzero / father_elements)
-    log_print(f"Father wavelets: {father_w.shape[0]} wavelets, {100 - father_sparsity:.2f}% non-zero")
-    
-    # Combined sparsity
-    total_elements = mother_elements + father_elements
-    total_nonzero = mother_nonzero + father_nonzero
-    combined_sparsity = 100 * (1 - total_nonzero / total_elements)
-    log_print(f"Combined sparsity: {100 - combined_sparsity:.2f}% non-zero")
-    
-    # Save MMF if requested
-    if args.save_mmf:
-        mmf_path = os.path.join(args.output_dir, f'{args.name}_mmf.pt')
-        torch.save(mmf_model.state_dict(), mmf_path)
-        log_print(f"Saved MMF model to {mmf_path}")
-    
-    # ========================================
+        # Create MMF model
+        log_print("Creating Learnable MMF model...")
+        mmf_model = Learnable_MMF(
+            L_norm, args.L, args.K, args.drop, args.dim,
+            wavelet_indices, rest_indices,
+            device=device
+        )
+        mmf_model = mmf_model.to(device)
+        
+        # Train MMF
+        log_print(f"\nTraining MMF for {args.mmf_epochs} epochs...")
+        mmf_optimizer = Adagrad(mmf_model.parameters(), lr=args.mmf_lr)
+        
+        all_losses = []
+        all_errors = []
+        norm = torch.norm(L_norm, p='fro')
+        best = 1e9
+        
+        for epoch in range(args.mmf_epochs):
+            t = time.time()
+            mmf_optimizer.zero_grad()
+            
+            A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model()
+            
+            loss = torch.norm(L_norm - A_rec, p='fro')
+            loss.backward()
+            
+            error = loss / norm
+            all_losses.append(loss.item())
+            all_errors.append(error.item())
+            
+            if epoch % 100 == 0 or epoch == args.mmf_epochs - 1:
+                log_print(f'Epoch {epoch:4d} | Loss: {loss.item():.6f} | '
+                         f'Error: {error.item():.6f} | Time: {time.time()-t:.2f}s')
+            
+            # Early stopping
+            if args.mmf_early_stop:
+                if loss.item() < best:
+                    best = loss.item()
+                else:
+                    log_print(f"Early stopping at epoch {epoch}")
+                    break
+            
+            # Manual Cayley update
+            for l in range(args.L):
+                X = mmf_model.all_O[l].data.clone()
+                G = mmf_model.all_O[l].grad.data.clone()
+                Z = torch.matmul(G, X.transpose(0, 1)) - torch.matmul(X, G.transpose(0, 1))
+                tau = args.mmf_lr
+                Y = torch.matmul(
+                    torch.matmul(
+                        torch.inverse(torch.eye(args.K, device=device) + tau / 2 * Z),
+                        torch.eye(args.K, device=device) - tau / 2 * Z
+                    ),
+                    X
+                )
+                mmf_model.all_O[l].data = Y.data
+        
+        # Get final wavelets
+        log_print("\nExtracting learned wavelets...")
+        with torch.no_grad():
+            A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model()
+        
+        # Compute sparsity for both mother and father wavelets
+        mother_elements = mother_w.numel()
+        mother_nonzero = (mother_w.abs() > 1e-6).sum().item()
+        mother_sparsity = 100 * (1 - mother_nonzero / mother_elements)
+        log_print(f"Mother wavelets: {mother_w.shape[0]} wavelets, {100 - mother_sparsity:.2f}% non-zero")
+        
+        father_elements = father_w.numel()
+        father_nonzero = (father_w.abs() > 1e-6).sum().item()
+        father_sparsity = 100 * (1 - father_nonzero / father_elements)
+        log_print(f"Father wavelets: {father_w.shape[0]} wavelets, {100 - father_sparsity:.2f}% non-zero")
+        
+        # Combined sparsity
+        total_elements = mother_elements + father_elements
+        total_nonzero = mother_nonzero + father_nonzero
+        combined_sparsity = 100 * (1 - total_nonzero / total_elements)
+        log_print(f"Combined sparsity: {100 - combined_sparsity:.2f}% non-zero")
+        
+        # Save MMF if requested
+        if args.save_mmf:
+            mmf_path = os.path.join(args.output_dir, f'{args.name}_mmf.pt')
+            torch.save(mmf_model.state_dict(), mmf_path)
+            log_print(f"Saved MMF model to {mmf_path}")
+        
+        # Save wavelets if requested
+        if args.save_wavelets:
+            wavelets_dir = os.path.join(args.output_dir, 'wavelets')
+            os.makedirs(wavelets_dir, exist_ok=True)
+            
+            mother_path = os.path.join(wavelets_dir, 'mother_wavelets.pt')
+            father_path = os.path.join(wavelets_dir, 'father_wavelets.pt')
+            
+            torch.save(mother_w, mother_path)
+            torch.save(father_w, father_path)
+            
+            log_print(f"\nSaved wavelets to {wavelets_dir}/")
+            log_print(f"  - mother_wavelets.pt: {mother_w.shape}")
+            log_print(f"  - father_wavelets.pt: {father_w.shape}")
+        
+        # ========================================
     # STEP 2: Train Wavelet Network
     # ========================================
     
-    log_print("\n" + "="*60)
     log_print("STEP 2: Training Wavelet Network")
     log_print("="*60 + "\n")
     
@@ -609,7 +670,6 @@ def main():
             )
     
     # Final results
-    log_print("\n" + "="*60)
     log_print("FINAL RESULTS")
     log_print("="*60)
     log_print(f"Best Validation Accuracy: {best_val_acc:.4f}")
