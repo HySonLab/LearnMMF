@@ -13,6 +13,7 @@ sys.path.append('../../source/')
 
 # Learnable MMF (use the fixed version to avoid OOM)
 from learnable_mmf_model import Learnable_MMF
+from heuristics import *
 
 # +---------------------------+
 # | Command-line arguments    |
@@ -218,105 +219,6 @@ def create_data_splits(N, labels, split_type='MMF1', seed=42):
     print(f"  Test:  {test_mask.sum().item()} ({test_ratio*100:.0f}%)")
     
     return train_mask, val_mask, test_mask
-
-
-# +---------------------------+
-# | Heuristics (placeholder)  |
-# +---------------------------+
-
-def heuristics_random(A_sparse, L, K, drop, dim):
-    """Random heuristic for selecting wavelet indices."""
-    N = A_sparse.size(0)
-    wavelet_indices = []
-    rest_indices = []
-    
-    available = list(range(N))
-    
-    for l in range(L):
-        # Randomly select drop indices for wavelet
-        if len(available) < K:
-            K_actual = len(available)
-        else:
-            K_actual = K
-        
-        indices = np.random.choice(available, size=K_actual, replace=False).tolist()
-        
-        # First 'drop' indices are wavelets
-        wavelet_idx = indices[:drop]
-        rest_idx = indices[drop:]
-        
-        wavelet_indices.append(wavelet_idx)
-        rest_indices.append(rest_idx)
-        
-        # Remove wavelet indices from available
-        for idx in wavelet_idx:
-            available.remove(idx)
-    
-    return wavelet_indices, rest_indices
-
-
-def heuristics_k_neighbors_single_wavelet(A_sparse, L, K, drop, dim):
-    """Smart heuristic based on K-neighbors for single wavelet."""
-    N = A_sparse.size(0)
-    A_dense = A_sparse.to_dense()
-    
-    wavelet_indices = []
-    rest_indices = []
-    
-    available = set(range(N))
-    
-    for l in range(L):
-        if len(available) == 0:
-            break
-        
-        # Select node with highest degree among available
-        degrees = []
-        available_list = list(available)
-        for node in available_list:
-            degree = sum(A_dense[node, list(available)] != 0)
-            degrees.append((degree, node))
-        
-        degrees.sort(reverse=True)
-        center_node = degrees[0][1]
-        
-        # Find K-1 nearest neighbors
-        neighbors = []
-        for node in available_list:
-            if node != center_node and A_dense[center_node, node] != 0:
-                neighbors.append(node)
-        
-        # Take up to K-1 neighbors
-        neighbors = neighbors[:K-1]
-        
-        # Combine center and neighbors
-        indices = [center_node] + neighbors
-        
-        # Pad if necessary
-        while len(indices) < K and len(available) > len(indices):
-            for node in available_list:
-                if node not in indices:
-                    indices.append(node)
-                    if len(indices) >= K:
-                        break
-        
-        # First is wavelet, rest are for rotation
-        wavelet_idx = [indices[0]]
-        rest_idx = indices[1:]
-        
-        wavelet_indices.append(wavelet_idx)
-        rest_indices.append(rest_idx)
-        
-        # Remove wavelet from available
-        available.remove(indices[0])
-    
-    return wavelet_indices, rest_indices
-
-
-def heuristics_k_neighbors_multiple_wavelets(A_sparse, L, K, drop, dim):
-    """Smart heuristic based on K-neighbors for multiple wavelets."""
-    # Similar to single wavelet but select 'drop' nodes as wavelets
-    # Simplified implementation
-    return heuristics_random(A_sparse, L, K, drop, dim)
 
 
 # +---------------------------+
