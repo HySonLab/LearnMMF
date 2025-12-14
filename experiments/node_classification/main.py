@@ -283,14 +283,14 @@ class Wavelet_Network(nn.Module):
         
         # Spectral convolution layers
         for layer in range(self.num_layers):
-            # Apply linear transformation
-            h_transformed = self.hidden_layers[layer](h)  # (1, N, H)
-            
             # Wavelet transform: W @ h  (from spatial to wavelet domain)
-            h_wavelet = torch.matmul(W, h_transformed)  # (1, L+dim, H)
+            h_wavelet = torch.matmul(W, h)  # (1, L+dim, H)
+
+            # Apply linear transformation
+            h_transformed = self.hidden_layers[layer](h_wavelet)  # (1, N, H)
             
             # Inverse transform: W^T @ h_wavelet (from wavelet to spatial domain)
-            h = torch.tanh(torch.matmul(W.transpose(1, 2), h_wavelet))  # (1, N, H)
+            h = torch.tanh(torch.matmul(W.transpose(1, 2), h_transformed))  # (1, N, H)
             all_hiddens.append(h)
         
         # Concatenate all hidden states
