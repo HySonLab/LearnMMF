@@ -9,10 +9,9 @@ import numpy as np
 import argparse
 import os
 import time
-import matplotlib.pyplot as plt
 
 # Nystrom model
-from nystrom_model import nystrom_model
+from nystrom_model import nystrom_model, nystrom_fps_model
 
 # Data loader
 from data_loader import *
@@ -68,5 +67,10 @@ if dataset == 'cayley':
 
 assert A is not None
 
-# Nystrom method
-A_rec, C, W_inverse = nystrom_model(A, dim = args.dim)
+for d in range(20, 81, 10):
+    # Nystrom method
+    A_rec, C, W_inverse = nystrom_model(A, dim = d)
+    norm1 = torch.norm(A - A_rec, p = 'fro')
+    A_rec, C, W_inverse = nystrom_fps_model(A, dim = d)
+    norm2 = torch.norm(A - A_rec, p = 'fro')
+    print(f'The ratio is {norm2 / norm1}')
