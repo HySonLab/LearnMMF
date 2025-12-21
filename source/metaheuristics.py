@@ -107,13 +107,6 @@ def get_cost(matrix, indices, rest, L, K, device='cpu'):
     return torch.norm(matrix - A_rec, p = 'fro').item()
 
 def get_cost_numpy_float32(matrix, indices, rest, L, K, device='cpu'):
-    """
-    Float32 (single precision) version.
-    Faster but less accurate - good for large matrices.
-    
-    Expected speedup: 1.5-2.5x on modern CPUs
-    Accuracy: Usually within 1e-4 to 1e-6 relative error
-    """
     N = matrix.size(0) if isinstance(matrix, torch.Tensor) else matrix.shape[0]
     
     # Convert to numpy with explicit float32
