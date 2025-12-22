@@ -37,7 +37,7 @@ results_karate = {
     'DE MMF': [],
 }
 
-for column in range(8, 25, 4):
+for column in range(10, 81, 15):
     print(f"\n=== Processing dimension: {column} ===")
     
     # Original MMF
