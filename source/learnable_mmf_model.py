@@ -103,7 +103,7 @@ class Learnable_MMF(nn.Module):
         # Reconstruction
         A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
 
-        # print('Initialization loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
+        print('Initialization loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
 
     def forward(self):
         # The current matrix
@@ -155,6 +155,8 @@ class Learnable_MMF(nn.Module):
 
         # Reconstruction
         A_rec = torch.matmul(torch.matmul(torch.transpose(right, 0, 1).contiguous(), D), right)
+
+        print('Forward loss:', torch.norm(self.A.data - A_rec, p = 'fro'))
 
         # Result
         return A_rec, right, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets

@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
+from tqdm import tqdm
 
 # Baseline MMF
 class Baseline_MMF(nn.Module):
@@ -30,7 +31,7 @@ class Baseline_MMF(nn.Module):
         # Active index
         active_index = torch.ones(self.N)
 
-        for l in range(self.L):
+        for l in tqdm(range(self.L)):
             active_list = np.array([i for i in range(self.N) if active_index[i] == 1])
             perm = torch.randperm(active_list.shape[0]).detach().cpu().numpy()
             assert active_list.shape[0] == perm.shape[0]

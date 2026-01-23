@@ -69,7 +69,7 @@ for column in range(10, 81, 15):
     print("Running EA MMF...")
     wavelet_indices, rest_indices, ea_cost, ea_min_cost_per_gen, ea_mean_cost_per_gen, ea_all_time_min_cost_per_gen = evolutionary_algorithm(
         get_cost, kron_matrix.clone(), L = column, K = 8, 
-        population_size = 50, generations = 100, mutation_rate = 0.2
+        population_size = 100, generations = 100, mutation_rate = 0.2
     )
     print(f'EA loss {ea_all_time_min_cost_per_gen[-1]}')
     A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = learnable_mmf_train(kron_matrix.clone(), L = column, K = 8, drop = 1, dim = N - column, wavelet_indices = wavelet_indices.unsqueeze(-1).tolist(), rest_indices = rest_indices.tolist(), epochs = 64, learning_rate = 1e-4, early_stop = True)
@@ -80,7 +80,7 @@ for column in range(10, 81, 15):
     print("Running DE MMF...")
     wavelet_indices, rest_indices, de_cost, de_min_cost_per_gen, de_mean_cost_per_gen, de_all_time_min_cost_per_gen = directed_evolution(
         get_cost, kron_matrix.clone(), L = column, K = 8, 
-        population_size = 50, generations = 100, sample_kept_rate = 0.3
+        population_size = 100, generations = 100, sample_kept_rate = 0.3
     )
     print(f'DE loss {de_all_time_min_cost_per_gen[-1]}')
     A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = learnable_mmf_train(kron_matrix.clone(), L = column, K = 8, drop = 1, dim = N - column, wavelet_indices = wavelet_indices.unsqueeze(-1).tolist(), rest_indices = rest_indices.tolist(), epochs = 64, learning_rate = 1e-4, early_stop = True)

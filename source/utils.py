@@ -10,6 +10,8 @@ from functools import partial
 from torch.autograd import Variable
 from nested_dict import nested_dict
 from collections import OrderedDict
+import random
+import numpy as np
 
 def cast(params, dtype='float'):
     if isinstance(params, dict):

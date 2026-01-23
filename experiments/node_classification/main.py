@@ -12,7 +12,7 @@ from tqdm import tqdm
 sys.path.append('../../source/')
 
 # Learnable MMF (use the fixed version to avoid OOM)
-from learnable_mmf_model import Learnable_MMF
+from baseline_mmf_model import Baseline_MMF
 from heuristics import *
 
 # +---------------------------+
@@ -234,9 +234,33 @@ def create_data_splits(N, labels, split_type='MMF1', seed=42):
 
 class Wavelet_Network(nn.Module):
     """
-    Wavelet Network for node classification using MMF wavelets.
+    Improved Wavelet Network for node classification using MMF wavelets.
+    
+    Key improvements over original:
+    - Dropout for regularization
+    - Layer normalization for training stability
+    - Residual connections in spectral layers
+    - GELU activation (smoother than tanh, better gradients)
+    - Optional label smoothing support
+    
+    Interface is identical to original for drop-in replacement.
     """
-    def __init__(self, num_layers, input_dim, hidden_dim, output_dim, device='cpu'):
+    def __init__(self, num_layers, input_dim, hidden_dim, output_dim, device='cpu',
+                 dropout=0.5, use_layer_norm=True, use_residual=True, 
+                 activation='gelu', input_dropout=0.1):
+        """
+        Args:
+            num_layers: Number of spectral convolution layers
+            input_dim: Input feature dimension (D)
+            hidden_dim: Hidden dimension (H)
+            output_dim: Output dimension (number of classes C)
+            device: Device to use
+            dropout: Dropout probability for hidden layers (default: 0.5)
+            use_layer_norm: Whether to use layer normalization (default: True)
+            use_residual: Whether to use residual connections (default: True)
+            activation: Activation function ('gelu', 'relu', 'leaky_relu', 'tanh')
+            input_dropout: Dropout on input features (default: 0.1)
+        """
         super(Wavelet_Network, self).__init__()
         
         self.num_layers = num_layers
@@ -244,19 +268,62 @@ class Wavelet_Network(nn.Module):
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.device = device
+        self.use_residual = use_residual
+        self.use_layer_norm = use_layer_norm
         
-        # Input layers
+        # Activation function
+        self.activation = self._get_activation(activation)
+        
+        # Dropout layers
+        self.input_dropout = nn.Dropout(input_dropout)
+        self.dropout = nn.Dropout(dropout)
+        
+        # Input layers with layer norm
         self.input_layer_1 = nn.Linear(self.input_dim, self.hidden_dim)
         self.input_layer_2 = nn.Linear(self.hidden_dim, self.hidden_dim)
         
-        # Hidden layers (spectral convolution)
+        if use_layer_norm:
+            self.input_norm_1 = nn.LayerNorm(self.hidden_dim)
+            self.input_norm_2 = nn.LayerNorm(self.hidden_dim)
+        
+        # Hidden layers (spectral convolution) with layer norm
         self.hidden_layers = nn.ModuleList()
+        self.hidden_norms = nn.ModuleList() if use_layer_norm else None
+        
         for layer in range(self.num_layers):
             self.hidden_layers.append(nn.Linear(self.hidden_dim, self.hidden_dim))
+            if use_layer_norm:
+                self.hidden_norms.append(nn.LayerNorm(self.hidden_dim))
         
         # Output layers
-        self.output_layer_1 = nn.Linear(self.hidden_dim * (self.num_layers + 1), self.hidden_dim)
+        concat_dim = self.hidden_dim * (self.num_layers + 1)
+        self.output_layer_1 = nn.Linear(concat_dim, self.hidden_dim)
         self.output_layer_2 = nn.Linear(self.hidden_dim, self.output_dim)
+        
+        if use_layer_norm:
+            self.output_norm = nn.LayerNorm(self.hidden_dim)
+        
+        # Initialize weights
+        self._init_weights()
+    
+    def _get_activation(self, name):
+        """Get activation function by name."""
+        activations = {
+            'gelu': nn.GELU(),
+            'relu': nn.ReLU(),
+            'leaky_relu': nn.LeakyReLU(0.2),
+            'tanh': nn.Tanh(),
+            'elu': nn.ELU(),
+        }
+        return activations.get(name, nn.GELU())
+    
+    def _init_weights(self):
+        """Initialize weights using Xavier/Glorot initialization."""
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
     
     def forward(self, W, f):
         """
@@ -267,7 +334,7 @@ class Wavelet_Network(nn.Module):
             f: Node features (N, D) or (1, N, D)
         
         Returns:
-            Class probabilities per node (N, C) or (1, N, C)
+            Class log-probabilities per node (N, C) or (1, N, C)
         """
         # Ensure batch dimension
         has_batch_dim = f.dim() == 3
@@ -276,28 +343,62 @@ class Wavelet_Network(nn.Module):
         
         all_hiddens = []
         
-        # Input transformation
-        h = torch.tanh(self.input_layer_1(f))  # (1, N, H)
-        h = torch.tanh(self.input_layer_2(h))  # (1, N, H)
+        # Apply input dropout
+        f = self.input_dropout(f)
+        
+        # Input transformation with normalization
+        h = self.input_layer_1(f)  # (1, N, H)
+        if self.use_layer_norm:
+            h = self.input_norm_1(h)
+        h = self.activation(h)
+        h = self.dropout(h)
+        
+        h = self.input_layer_2(h)  # (1, N, H)
+        if self.use_layer_norm:
+            h = self.input_norm_2(h)
+        h = self.activation(h)
+        h = self.dropout(h)
+        
         all_hiddens.append(h)
         
-        # Spectral convolution layers
+        # Spectral convolution layers with residual connections
         for layer in range(self.num_layers):
-            # Wavelet transform: W @ h  (from spatial to wavelet domain)
-            h_wavelet = torch.matmul(W, h)  # (1, L+dim, H)
-
-            # Apply linear transformation
-            h_transformed = self.hidden_layers[layer](h_wavelet)  # (1, N, H)
+            h_input = h  # Save for residual
             
-            # Inverse transform: W^T @ h_wavelet (from wavelet to spatial domain)
-            h = torch.tanh(torch.matmul(W.transpose(1, 2), h_transformed))  # (1, N, H)
+            # Wavelet transform: W @ h (spatial -> wavelet domain)
+            h_wavelet = torch.matmul(W, h)  # (1, L+dim, H)
+            
+            # Apply linear transformation in wavelet domain
+            h_transformed = self.hidden_layers[layer](h_wavelet)  # (1, L+dim, H)
+            h_transformed = self.dropout(h_transformed)
+            
+            # Inverse transform: W^T @ h_wavelet (wavelet -> spatial domain)
+            h = torch.matmul(W.transpose(1, 2), h_transformed)  # (1, N, H)
+            
+            # Layer normalization
+            if self.use_layer_norm:
+                h = self.hidden_norms[layer](h)
+            
+            # Residual connection
+            if self.use_residual:
+                h = h + h_input
+            
+            # Activation
+            h = self.activation(h)
+            h = self.dropout(h)
+            
             all_hiddens.append(h)
         
-        # Concatenate all hidden states
+        # Concatenate all hidden states (multi-scale features)
         concat = torch.cat(all_hiddens, dim=2)  # (1, N, H*(num_layers+1))
         
         # Output layers
-        output_1 = torch.tanh(self.output_layer_1(concat))  # (1, N, H)
+        output_1 = self.output_layer_1(concat)  # (1, N, H)
+        if self.use_layer_norm:
+            output_1 = self.output_norm(output_1)
+        output_1 = self.activation(output_1)
+        output_1 = self.dropout(output_1)
+        
         logits = self.output_layer_2(output_1)  # (1, N, C)
         
         # Remove batch dimension if input didn't have it
@@ -464,86 +565,14 @@ def main():
         log_print('STEP 1: Learning MMF Wavelet Bases')
         log_print('='*60 + '\n')
         
-        # Compute heuristics
-        log_print(f"Computing {args.heuristics} heuristics...")
-        A_sparse = L_norm.to_sparse()
-        
-        if args.heuristics == 'random':
-            wavelet_indices, rest_indices = heuristics_random(
-                A_sparse, args.L, args.K, args.drop, args.dim
-            )
-        else:
-            if args.drop == 1:
-                wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(
-                    A_sparse, args.L, args.K, args.drop, args.dim
-                )
-            else:
-                wavelet_indices, rest_indices = heuristics_k_neighbors_multiple_wavelets(
-                    A_sparse, args.L, args.K, args.drop, args.dim
-                )
-        
         # Create MMF model
         log_print("Creating Learnable MMF model...")
-        mmf_model = Learnable_MMF(
-            L_norm, args.L, args.K, args.drop, args.dim,
-            wavelet_indices, rest_indices,
+        mmf_model = Baseline_MMF(
+            L_norm.size(0), args.L, args.dim,
             device=device
         )
-        mmf_model = mmf_model.to(device)
-        
-        # Train MMF
-        log_print(f"\nTraining MMF for {args.mmf_epochs} epochs...")
-        mmf_optimizer = Adagrad(mmf_model.parameters(), lr=args.mmf_lr)
-        
-        all_losses = []
-        all_errors = []
-        norm = torch.norm(L_norm, p='fro')
-        best = 1e9
-        
-        for epoch in range(args.mmf_epochs):
-            t = time.time()
-            mmf_optimizer.zero_grad()
-            
-            A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model()
-            
-            loss = torch.norm(L_norm - A_rec, p='fro')
-            loss.backward()
-            
-            error = loss / norm
-            all_losses.append(loss.item())
-            all_errors.append(error.item())
-            
-            if epoch % 100 == 0 or epoch == args.mmf_epochs - 1:
-                log_print(f'Epoch {epoch:4d} | Loss: {loss.item():.6f} | '
-                         f'Error: {error.item():.6f} | Time: {time.time()-t:.2f}s')
-            
-            # Early stopping
-            if args.mmf_early_stop:
-                if loss.item() < best:
-                    best = loss.item()
-                else:
-                    log_print(f"Early stopping at epoch {epoch}")
-                    break
-            
-            # Manual Cayley update
-            for l in range(args.L):
-                X = mmf_model.all_O[l].data.clone()
-                G = mmf_model.all_O[l].grad.data.clone()
-                Z = torch.matmul(G, X.transpose(0, 1)) - torch.matmul(X, G.transpose(0, 1))
-                tau = args.mmf_lr
-                Y = torch.matmul(
-                    torch.matmul(
-                        torch.inverse(torch.eye(args.K, device=device) + tau / 2 * Z),
-                        torch.eye(args.K, device=device) - tau / 2 * Z
-                    ),
-                    X
-                )
-                mmf_model.all_O[l].data = Y.data
-        
-        # Get final wavelets
-        log_print("\nExtracting learned wavelets...")
-        with torch.no_grad():
-            A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model()
+    
+        A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model(L_norm)
         
         # Compute sparsity for both mother and father wavelets
         mother_elements = mother_w.numel()

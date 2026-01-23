@@ -35,12 +35,15 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = original_mmf(karate_laplacian)
     results['original_cost'] = torch.norm(karate_laplacian - A_rec, p='fro').item()
     timings['original_time'] = time.time() - start
+
+    L = 16
+    dim = N - L
     
     # Learnable MMF (random indices)
     start = time.time()
-    wavelet_indices, rest_indices = heuristics_random(karate_laplacian.to_sparse(), L=26, K=8, drop=1, dim=8)
+    wavelet_indices, rest_indices = heuristics_random(karate_laplacian.to_sparse(), L=L, K=8, drop=1, dim=dim)
     A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = learnable_mmf_train(
-        karate_laplacian, L=26, K=8, drop=1, dim=8, 
+        karate_laplacian, L=L, K=8, drop=1, dim=dim, 
         wavelet_indices=wavelet_indices, rest_indices=rest_indices, 
         epochs=0, learning_rate=1e-4, early_stop=True
     )
@@ -49,9 +52,9 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     
     # Learnable MMF (heuristics to select indices)
     start = time.time()
-    wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(karate_laplacian.to_sparse(), L=26, K=8, drop=1, dim=8)
+    wavelet_indices, rest_indices = heuristics_k_neighbors_single_wavelet(karate_laplacian.to_sparse(), L=L, K=8, drop=1, dim=dim)
     A_rec, U, D, mother_coefficients, father_coefficients, mother_wavelets, father_wavelets = learnable_mmf_train(
-        karate_laplacian, L=26, K=8, drop=1, dim=8, 
+        karate_laplacian, L=L, K=8, drop=1, dim=dim, 
         wavelet_indices=wavelet_indices, rest_indices=rest_indices, 
         epochs=0, learning_rate=1e-3, early_stop=True
     )
@@ -61,7 +64,7 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     # Learnable MMF (EA to select indices)
     start = time.time()
     wavelet_indices, rest_indices, ea_cost, ea_min_cost_per_gen, ea_mean_cost_per_gen, ea_all_time_min_cost_per_gen = evolutionary_algorithm(
-        get_cost_numpy_float32, karate_laplacian, L=26, K=8, 
+        get_cost_numpy_float32, karate_laplacian, L=L, K=8, 
         population_size=50, generations=100, mutation_rate=0.2
     )
     results['ea_all_time_min'] = ea_all_time_min_cost_per_gen
@@ -70,7 +73,7 @@ def run_single_experiment(experiment_id, karate_laplacian, N, base_seed):
     # Learnable MMF (DE to select indices)
     start = time.time()
     wavelet_indices, rest_indices, de_cost, de_min_cost_per_gen, de_mean_cost_per_gen, de_all_time_min_cost_per_gen = directed_evolution(
-        get_cost_numpy_float32, karate_laplacian, L=26, K=8, 
+        get_cost_numpy_float32, karate_laplacian, L=L, K=8, 
         population_size=50, generations=100, sample_kept_rate=0.3
     )
     results['de_all_time_min'] = de_all_time_min_cost_per_gen
@@ -93,7 +96,7 @@ def main():
     num_experiments = 10  # Adjust this number based on your needs
     
     # Data loading
-    karate_laplacian = karate_def(r'C:\Users\Khang Nguyen\Documents\GitHub\LearnMMF\data')
+    karate_laplacian = karate_def(r'D:\codebase\LearnMMF\data')
     N = karate_laplacian.size(0)
     
     print(f"Running {num_experiments} experiments consecutively with base seed {BASE_SEED}...")
