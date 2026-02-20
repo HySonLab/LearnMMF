@@ -12,7 +12,7 @@ from tqdm import tqdm
 sys.path.append('../../source/')
 
 # Learnable MMF (use the fixed version to avoid OOM)
-from learnable_mmf_model import Learnable_MMF
+from learnable_mmf_model import learnable_mmf_train
 from heuristics import heuristics_random
 from metaheuristics import generate_wavelet_basis
 from heuristics import *
@@ -35,7 +35,7 @@ def parse_arguments():
                         help='Path to data folder')
     
     # MMF parameters
-    parser.add_argument('--K', type=int, default=16,
+    parser.add_argument('--K', type=int, default=2,
                         help='Size of Jacobian rotation matrix')
     parser.add_argument('--L', type=int, default=None,
                         help='Number of resolutions (default: N - dim)')
@@ -48,7 +48,7 @@ def parse_arguments():
                         help='Heuristics for finding wavelet indices')
     
     # MMF training parameters
-    parser.add_argument('--mmf-epochs', type=int, default=10000,
+    parser.add_argument('--mmf-epochs', type=int, default=20,
                         help='Number of epochs for MMF training')
     parser.add_argument('--mmf-lr', type=float, default=1e-4,
                         help='Learning rate for MMF training')
@@ -62,7 +62,7 @@ def parse_arguments():
                         help='Hidden dimension for each node')
     
     # WNN training parameters
-    parser.add_argument('--wnn-epochs', type=int, default=256,
+    parser.add_argument('--wnn-epochs', type=int, default=1024,
                         help='Number of epochs for WNN training')
     parser.add_argument('--wnn-lr', type=float, default=1e-3,
                         help='Learning rate for WNN training')
@@ -426,7 +426,7 @@ def train_wnn(model, W, features, labels, train_mask, optimizer, device):
     loss = F.nll_loss(output[train_mask], labels[train_mask])
     
     # Backward pass
-    loss.backward()
+    loss.backward(retain_graph=True)
     optimizer.step()
     
     # Compute accuracy
@@ -569,8 +569,14 @@ def main():
         
         # Create MMF model
         log_print("Creating Learnable MMF model...")
-        A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = generate_wavelet_basis(L_norm, args.L, args.K, 'directed_evolution', 128)
-        
+        wavelet_indices, rest_indices = heuristics_random(L_norm.to_sparse(), L=args.L, K=args.K, drop=1, dim=args.dim)
+        log_print("Indices created")
+        A_rec, U, D, mother_coefficients, father_coefficients, mother_w, father_w = learnable_mmf_train(
+            L_norm, L=args.L, K=args.K, drop=1, dim=args.dim, 
+            wavelet_indices=wavelet_indices, rest_indices=rest_indices, 
+            epochs=args.mmf_epochs, learning_rate=1e-4, early_stop=True
+        )
+
         # Compute sparsity for both mother and father wavelets
         mother_elements = mother_w.numel()
         mother_nonzero = (mother_w.abs() > 1e-6).sum().item()
