@@ -12,7 +12,9 @@ from tqdm import tqdm
 sys.path.append('../../source/')
 
 # Learnable MMF (use the fixed version to avoid OOM)
-from baseline_mmf_model import Baseline_MMF
+from learnable_mmf_model import Learnable_MMF
+from heuristics import heuristics_random
+from metaheuristics import generate_wavelet_basis
 from heuristics import *
 
 # +---------------------------+
@@ -567,12 +569,7 @@ def main():
         
         # Create MMF model
         log_print("Creating Learnable MMF model...")
-        mmf_model = Baseline_MMF(
-            L_norm.size(0), args.L, args.dim,
-            device=device
-        )
-    
-        A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = mmf_model(L_norm)
+        A_rec, U, D, mother_coeff, father_coeff, mother_w, father_w = generate_wavelet_basis(L_norm, args.L, args.K, 'directed_evolution', 128)
         
         # Compute sparsity for both mother and father wavelets
         mother_elements = mother_w.numel()

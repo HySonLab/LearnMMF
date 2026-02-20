@@ -1,5 +1,6 @@
 import sys
 import torch
+import json
 sys.path.append('../../source/')
 from data_loader import *
 from baseline_mmf_model import Baseline_MMF
@@ -123,3 +124,9 @@ for method in results_karate:
         print(f"  Dimension {dim}: Error = {error:.6f}")
 
 plt.show()
+
+# Save raw output to a JSON file
+with open('karate_results.json', 'w') as f:
+    json.dump(results_karate, f, indent=4)
+    
+print("Raw data saved to karate_results.json")
