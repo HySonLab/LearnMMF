@@ -45,7 +45,7 @@ def parse_arguments():
                         help='Number of father wavelets (default: auto-computed)')
     
     # MMF training parameters
-    parser.add_argument('--mmf-epochs', type=int, default=20,
+    parser.add_argument('--mmf-epochs', type=int, default=10,
                         help='Number of epochs for MMF training')
     parser.add_argument('--mmf-lr', type=float, default=1e-4,
                         help='Learning rate for MMF training')
@@ -611,6 +611,7 @@ def main():
             log_print(f"\nSaved wavelets to {wavelets_dir}/")
             log_print(f"  - mother_wavelets.pt: {mother_w.shape}")
             log_print(f"  - father_wavelets.pt: {father_w.shape}")
+            exit(0)
         
         # ========================================
     # STEP 2: Train Wavelet Network
@@ -661,7 +662,6 @@ def main():
     log_print(f"Training WNN for {args.wnn_epochs} epochs...")
     best_val_acc = 0
     best_test_acc = 0
-    
     for epoch in range(args.wnn_epochs):
         # Train
         train_loss, train_acc = train_wnn(
