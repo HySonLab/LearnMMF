@@ -43,9 +43,6 @@ def parse_arguments():
                         help='Number of rows/columns to drop per iteration')
     parser.add_argument('--dim', type=int, default=None,
                         help='Number of father wavelets (default: auto-computed)')
-    parser.add_argument('--heuristics', type=str, default='smart',
-                        choices=['random', 'smart'],
-                        help='Heuristics for finding wavelet indices')
     
     # MMF training parameters
     parser.add_argument('--mmf-epochs', type=int, default=20,
