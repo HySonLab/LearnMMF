@@ -12,12 +12,29 @@ Recommend using Conda environment for easy installation.
 ## General organization
 * ```data/```: Datasets.
 * ```doc/```: Documentation in \LaTeX.
-* ```experiments/```: Experiments of wavelet networks learning graphs (e.g., graph classification).
+* ```experiments/```: Experiments of wavelet networks learning graphs (e.g., graph classification and node classification).
 * ```source/```: Implementation of Multiresolution Matrix Factorization (MMF) including the original (baseline), learnable and sparse; and several examples.
 
 Please check the pdf documentation in ```doc/``` for implementation details and usage.
 
 ![wavelets](wavelets.png)
+
+## Reproducing Node Classification Results (Cora / Citeseer)
+
+The node classification experiments reported in the paper are performed on the
+Cora and Citeseer citation graph datasets using the Wavelet Neural Network (WNN)
+constructed from the learned MMF wavelet basis.
+
+The reported results correspond to the **test accuracy of the model checkpoint
+that achieves the highest validation accuracy during training**.
+
+Because the training procedure involves stochastic optimization, random
+initialization, and mini-batch updates, the final accuracy may vary across runs
+and hardware environments. Therefore, running the reproduction script once may
+produce slightly lower accuracy than the values reported in the manuscript.
+
+For more stable reproduction, we recommend running multiple seeds and selecting
+the model with the highest validation accuracy.
 
 ## Cite our paper
 ```bibtex
