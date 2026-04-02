@@ -1,4 +1,4 @@
-## Paper
+## Publications
 * Truong-Son Hy, Thieu Khang Nguyen & Risi Kondor, Learning to solve multiresolution matrix factorization by manifold optimization and evolutionary metaheuristics, Machine Learning: Science and Technology, DOI 10.1088/2632-2153/ae5b22. URL: https://iopscience.iop.org/article/10.1088/2632-2153/ae5b22
 * Truong Son Hy & Risi Kondor, Multiresolution Matrix Factorization and Wavelet Networks on Graphs,  Proceedings of Topological, Algebraic, and Geometric Learning Workshops 2022, PMLR 196:172-182, 2022. URL: https://proceedings.mlr.press/v196/hy22a.html
 
