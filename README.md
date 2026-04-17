@@ -1,5 +1,5 @@
 ## Publications
-* Truong-Son Hy, Thieu Khang Nguyen & Risi Kondor, Learning to solve multiresolution matrix factorization by manifold optimization and evolutionary metaheuristics, Machine Learning: Science and Technology, DOI 10.1088/2632-2153/ae5b22. URL: https://iopscience.iop.org/article/10.1088/2632-2153/ae5b22
+* Truong-Son Hy, Thieu Khang Nguyen & Risi Kondor, Learning to solve multiresolution matrix factorization by manifold optimization and evolutionary metaheuristics, Machine Learning: Science and Technology, Volume 7, Number 2, Pages 025060, DOI 10.1088/2632-2153/ae5b22. URL: https://iopscience.iop.org/article/10.1088/2632-2153/ae5b22
 * Truong Son Hy & Risi Kondor, Multiresolution Matrix Factorization and Wavelet Networks on Graphs,  Proceedings of Topological, Algebraic, and Geometric Learning Workshops 2022, PMLR 196:172-182, 2022. URL: https://proceedings.mlr.press/v196/hy22a.html
 
 ## Requirement
@@ -55,13 +55,19 @@ the model with the highest validation accuracy.
 ```
 
 ```bibtex
-@article{10.1088/2632-2153/ae5b22,
-	author={Hy, Truong-Son and Nguyen, Thieu Khang and Kondor, Risi},
-	title={Learning to solve multiresolution matrix factorization by manifold optimization and evolutionary metaheuristics},
-	journal={Machine Learning: Science and Technology},
-	url={http://iopscience.iop.org/article/10.1088/2632-2153/ae5b22},
-	year={2026},
-	abstract={Multiresolution Matrix Factorization (MMF) is unusual amongst fast matrix factorization algorithms in that it does not make a low rank assumption. This makes MMF especially well suited to modeling certain types of graphs with complex multiscale or hierarchical strucutre. While MMF promises to yields a useful wavelet basis, finding the factorization itself is hard, and existing greedy methods tend to be brittle. In this paper, we propose a "learnable" version of MMF that carfully optimizes the factorization using metaheuristics, specifically evolutionary algorithms and directed evolution, along with Stiefel manifold optimization through backpropagating errors. We show that the resulting wavelet basis far outperforms prior MMF algorithms and gives comparable performance on standard learning tasks on graphs. Furthermore, we construct the wavelet neural networks (WNNs) learning graphs on the spectral domain with the wavelet basis produced by our MMF learning algorithm. Our wavelet networks are competitive against other state-of-the-art methods in molecular graphs classification and node classification on citation graphs. We release our implementation at https://github.com/HySonLab/LearnMMF}
+@article{Hy_2026,
+doi = {10.1088/2632-2153/ae5b22},
+url = {https://doi.org/10.1088/2632-2153/ae5b22},
+year = {2026},
+month = {apr},
+publisher = {IOP Publishing},
+volume = {7},
+number = {2},
+pages = {025060},
+author = {Hy, Truong-Son and Khang Nguyen, Thieu and Kondor, Risi},
+title = {Learning to solve multiresolution matrix factorization by manifold optimization and evolutionary metaheuristics},
+journal = {Machine Learning: Science and Technology},
+abstract = {Multiresolution matrix factorization (MMF) is unusual amongst fast matrix factorization algorithms in that it does not make a low rank assumption. This makes MMF especially well suited to modeling certain types of graphs with complex multiscale or hierarchical structure. While MMF promises to yields a useful wavelet basis, finding the factorization itself is hard, and existing greedy methods tend to be brittle. In this paper, we propose a ‘learnable’ version of MMF that carefully optimizes the factorization using metaheuristics, specifically evolutionary algorithms and directed evolution, along with Stiefel manifold optimization through backpropagating errors. We show that the resulting wavelet basis far outperforms prior MMF algorithms and gives comparable performance on standard learning tasks on graphs. Furthermore, we construct the wavelet neural networks learning graphs on the spectral domain with the wavelet basis produced by our MMF learning algorithm. Our wavelet networks are competitive against other state-of-the-art methods in molecular graphs classification and node classification on citation graphs. We release our implementation at https://github.com/HySonLab/LearnMMF.}
 }
 ```
 
